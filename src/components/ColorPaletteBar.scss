@@ -157,3 +157,70 @@
   font-size: 10px;
   color: #94a3b8;
 }
+
+/* 明亮模式适配 */
+.theme-light .palette-bar-container {
+  background: #ffffff;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.04);
+
+  .title {
+    color: #0f172a;
+  }
+
+  .stats-badge {
+    color: #0284c7;
+    background: #e0f2fe;
+  }
+
+  .expand-btn {
+    color: #64748b;
+  }
+
+  .clear-highlight-btn {
+    color: #b45309;
+    background: #fef3c7;
+    border-color: #fde68a;
+  }
+
+  .active-banner {
+    background: linear-gradient(90deg, #fef9c3, #ffffff);
+    border-left: 3px solid #eab308;
+
+    .banner-text {
+      color: #854d0e;
+    }
+
+    .highlight-code {
+      color: #0f172a;
+    }
+
+    .highlight-count {
+      color: #0284c7;
+    }
+  }
+
+  .color-card {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+
+    &.active {
+      border-color: #eab308;
+      background: #fef9c3;
+      box-shadow: 0 0 10px rgba(234, 179, 8, 0.25);
+    }
+  }
+
+  .bead-hole {
+    background: #ffffff;
+  }
+
+  .color-code {
+    color: #0f172a;
+  }
+
+  .color-count {
+    color: #64748b;
+  }
+}
+

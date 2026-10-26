@@ -30,6 +30,7 @@ export interface BeadCanvasProps {
   tool?: 'view' | 'pencil' | 'eyedropper' | 'bucket' | 'eraser'
   activeColor?: BeadColor | null
   baseCellSize?: number
+  theme?: 'dark' | 'light'
   onCellClick?: (payload: { x: number; y: number; cell: BeadCell }) => void
   onPickColor?: (color: BeadColor) => void
 }
@@ -47,7 +48,9 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
   const {
     grid,
     selectedColorCode = null,
+    tool = 'view',
     baseCellSize = 22,
+    theme = 'dark',
     onCellClick,
     onPickColor
   } = props
@@ -59,6 +62,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
   const dprRef = useRef(1)
 
   const [scaleDisplay, setScaleDisplay] = useState(100)
+  const [isDragging, setIsDragging] = useState(false)
 
   const viewportRef = useRef<Viewport>({
     scale: 1.0,
@@ -72,8 +76,11 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     isDragging: false,
     hasMovedSignificantly: false,
     dragStartScreen: { x: 0, y: 0 },
-    dragStartOffset: { x: 0, y: 0 }
+    dragStartOffset: { offsetX: 20, offsetY: 20 }
   })
+
+  // 记录上一次的网格尺寸，避免每次单点笔触刷新时强制打断用户的平移缩放
+  const lastGridDimRef = useRef({ w: 0, h: 0 })
 
   const centerAndFitBoard = useCallback(() => {
     if (!grid || grid.length === 0) return
@@ -83,13 +90,22 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     const boardW = gridW * baseCellSize
     const boardH = gridH * baseCellSize
 
-    const scaleX = (canvasWidthRef.current - 40) / boardW
-    const scaleY = (canvasHeightRef.current - 60) / boardH
-    const initialScale = clampScale(Math.min(scaleX, scaleY, 1.2), 0.5, 3.0)
+    const w = canvasWidthRef.current || 360
+    const h = canvasHeightRef.current || 480
+
+    const paddingX = Math.min(32, w * 0.08)
+    const paddingY = Math.min(32, h * 0.08)
+    const availW = Math.max(80, w - paddingX * 2)
+    const availH = Math.max(80, h - paddingY * 2)
+
+    const scaleX = availW / boardW
+    const scaleY = availH / boardH
+    const initialScale = clampScale(Math.min(scaleX, scaleY, 2.0), 0.4, 5.0)
 
     viewportRef.current.scale = initialScale
-    viewportRef.current.offsetX = (canvasWidthRef.current - boardW * initialScale) / 2
-    viewportRef.current.offsetY = (canvasHeightRef.current - boardH * initialScale) / 2
+    // 精确将底板中点与画布中点重合 (Math.round 避免亚像素模糊)
+    viewportRef.current.offsetX = Math.round((w - boardW * initialScale) / 2)
+    viewportRef.current.offsetY = Math.round((h - boardH * initialScale) / 2)
     setScaleDisplay(Math.round(initialScale * 100))
   }, [grid, baseCellSize])
 
@@ -108,11 +124,18 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     const beadRadius = (scaledCell * 0.9) / 2
     const holeRadius = beadRadius * 0.38
 
+    const isLight = theme === 'light'
+    const boardBgColor = isLight ? '#ffffff' : '#22232a'
+    const emptyHoleBg = isLight ? '#e2e8f0' : '#2d2e36'
+    const holeCenterBg = isLight ? '#cbd5e1' : '#18191f'
+    const rulerLineColor = isLight ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.15)'
+    const beadStrokeColor = isLight ? 'rgba(0, 0, 0, 0.18)' : 'rgba(0, 0, 0, 0.3)'
+
     // 1. 底板底色
     const boardW = gridW * scaledCell
     const boardH = gridH * scaledCell
 
-    ctx.fillStyle = '#22232a'
+    ctx.fillStyle = boardBgColor
     ctx.fillRect(offsetX, offsetY, boardW, boardH)
 
     // 2. 视锥剔除：计算当前屏幕可见单元格范围
@@ -131,7 +154,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
         const centerY = cellTop + scaledCell / 2
 
         if (cell.isEmpty) {
-          ctx.fillStyle = '#2d2e36'
+          ctx.fillStyle = emptyHoleBg
           ctx.beginPath()
           ctx.arc(centerX, centerY, Math.max(1.5, holeRadius * 0.8), 0, Math.PI * 2)
           ctx.fill()
@@ -141,7 +164,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
         const isTarget = !selectedColorCode || cell.color.code === selectedColorCode
 
         // 寻豆模式暗化
-        ctx.globalAlpha = isTarget ? 1.0 : 0.22
+        ctx.globalAlpha = isTarget ? 1.0 : (isLight ? 0.16 : 0.22)
 
         // 外圈珠体
         ctx.fillStyle = cell.color.hex
@@ -151,11 +174,11 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
 
         // 描边
         ctx.lineWidth = Math.max(0.8, 1.2 * scale)
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)'
+        ctx.strokeStyle = beadStrokeColor
         ctx.stroke()
 
         // 中心插孔
-        ctx.fillStyle = '#18191f'
+        ctx.fillStyle = holeCenterBg
         ctx.beginPath()
         ctx.arc(centerX, centerY, holeRadius, 0, Math.PI * 2)
         ctx.fill()
@@ -185,7 +208,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     ctx.globalAlpha = 1.0
 
     // 4. 网格每 5 格标尺线
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'
+    ctx.strokeStyle = rulerLineColor
     ctx.lineWidth = 1
     for (let x = 0; x <= gridW; x += 5) {
       const lineX = offsetX + x * scaledCell
@@ -205,7 +228,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
         ctx.stroke()
       }
     }
-  }, [grid, selectedColorCode, baseCellSize])
+  }, [grid, selectedColorCode, baseCellSize, theme])
 
   const zoomAtPoint = useCallback((screenX: number, screenY: number, factor: number) => {
     const oldScale = viewportRef.current.scale
@@ -255,44 +278,74 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     const isWeApp = process.env.TARO_ENV === 'weapp'
 
     if (isWeApp) {
-      const query = Taro.createSelectorQuery()
-      query
-        .select('#beadCanvas')
-        .fields({ node: true, size: true })
-        .exec((res: any) => {
-          if (!res || !res[0] || !res[0].node) return
-          const node = res[0].node
-          canvasNodeRef.current = node
-          const ctx = node.getContext('2d')
-          ctxRef.current = ctx
-          const sys = Taro.getSystemInfoSync()
-          const dpr = sys.pixelRatio || 1
-          dprRef.current = dpr
-          canvasWidthRef.current = res[0].width
-          canvasHeightRef.current = res[0].height
+      let isMounted = true
+      let retryCount = 0
+      let timer: any = null
 
-          node.width = res[0].width * dpr
-          node.height = res[0].height * dpr
-          ctx.scale(dpr, dpr)
+      const initWeappCanvas = () => {
+        if (!isMounted) return
+        const query = Taro.createSelectorQuery()
+        query
+          .select('#beadCanvas')
+          .fields({ node: true, size: true })
+          .exec((res: any) => {
+            if (!isMounted) return
+            if (!res || !res[0] || !res[0].node) {
+              if (retryCount < 30) {
+                retryCount++
+                timer = setTimeout(initWeappCanvas, 60)
+              }
+              return
+            }
+            const node = res[0].node
+            canvasNodeRef.current = node
+            const ctx = node.getContext('2d')
+            ctxRef.current = ctx
+            const sys = Taro.getSystemInfoSync()
+            const dpr = sys.pixelRatio || 1
+            dprRef.current = dpr
+            const w = res[0].width || 360
+            const h = res[0].height || 480
+            canvasWidthRef.current = w
+            canvasHeightRef.current = h
 
-          centerAndFitBoard()
-          renderCanvas()
-        })
+            node.width = w * dpr
+            node.height = h * dpr
+            ctx.scale(dpr, dpr)
+
+            centerAndFitBoard()
+            renderCanvas()
+          })
+      }
+
+      initWeappCanvas()
+
+      return () => {
+        isMounted = false
+        if (timer) clearTimeout(timer)
+      }
     } else {
-      // H5 / Browser 环境
-      const timer = setTimeout(function tryMount() {
+      // H5 / Browser 环境：响应式自适应容器与居中
+      let resizeObserver: ResizeObserver | null = null
+      let isMounted = true
+
+      const setupCanvasSize = () => {
+        if (!isMounted) return false
         const root = document.getElementById('beadCanvas')
         const el = (root?.querySelector('canvas') || root) as HTMLCanvasElement
-        if (!el || typeof el.getContext !== 'function') {
-          setTimeout(tryMount, 50)
-          return
-        }
+        if (!el || typeof el.getContext !== 'function') return false
+
         canvasNodeRef.current = el
         const ctx = el.getContext('2d')
         ctxRef.current = ctx
-        const rect = (root || el).parentElement?.getBoundingClientRect()
-        const w = rect?.width || 360
-        const h = rect?.height || 480
+
+        const container = document.getElementById('canvasContainer') || (root || el).parentElement
+        const rect = container?.getBoundingClientRect()
+        const w = Math.round(rect?.width || window.innerWidth || 360)
+        const h = Math.round(rect?.height || (window.innerHeight - 150) || 480)
+
+        if (w <= 0 || h <= 0) return false
+
         canvasWidthRef.current = w
         canvasHeightRef.current = h
         const dpr = window.devicePixelRatio || 1
@@ -300,26 +353,62 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
 
         el.width = w * dpr
         el.height = h * dpr
-        el.style.width = `${w}px`
-        el.style.height = `${h}px`
+        el.style.width = '100%'
+        el.style.height = '100%'
+        ctx?.setTransform(1, 0, 0, 1, 0, 0)
         ctx?.scale(dpr, dpr)
 
         centerAndFitBoard()
         renderCanvas()
+        return true
+      }
+
+      const timer = setTimeout(function tryMount() {
+        if (!isMounted) return
+        const success = setupCanvasSize()
+        if (!success) {
+          setTimeout(tryMount, 50)
+          return
+        }
+
+        const container = document.getElementById('canvasContainer')
+        if (typeof ResizeObserver !== 'undefined' && container) {
+          resizeObserver = new ResizeObserver(() => {
+            setupCanvasSize()
+          })
+          resizeObserver.observe(container)
+        } else {
+          window.addEventListener('resize', setupCanvasSize)
+        }
       }, 50)
-      return () => clearTimeout(timer)
+
+      return () => {
+        isMounted = false
+        clearTimeout(timer)
+        if (resizeObserver) {
+          resizeObserver.disconnect()
+        } else {
+          window.removeEventListener('resize', setupCanvasSize)
+        }
+      }
     }
   }, [centerAndFitBoard, renderCanvas])
 
-  // 依赖变化重新渲染
+  // 依赖变化重新渲染：网格规格变化时自动一键居中
   useEffect(() => {
-    centerAndFitBoard()
+    if (!grid || grid.length === 0) return
+    const curW = grid[0].length
+    const curH = grid.length
+    if (lastGridDimRef.current.w !== curW || lastGridDimRef.current.h !== curH) {
+      lastGridDimRef.current = { w: curW, h: curH }
+      centerAndFitBoard()
+    }
     renderCanvas()
   }, [grid, centerAndFitBoard, renderCanvas])
 
   useEffect(() => {
     renderCanvas()
-  }, [selectedColorCode, renderCanvas])
+  }, [selectedColorCode, theme, renderCanvas])
 
   // 触摸手势
   const handleTouchStart = (e: any) => {
@@ -328,9 +417,14 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
       touchStateRef.current.isDragging = true
       touchStateRef.current.hasMovedSignificantly = false
       touchStateRef.current.dragStartScreen = { x: touches[0].clientX, y: touches[0].clientY }
-      touchStateRef.current.dragStartOffset = { ...viewportRef.current }
+      touchStateRef.current.dragStartOffset = {
+        offsetX: viewportRef.current.offsetX,
+        offsetY: viewportRef.current.offsetY
+      }
+      setIsDragging(true)
     } else if (touches.length >= 2) {
       touchStateRef.current.isDragging = false
+      setIsDragging(false)
       touchStateRef.current.lastTouchDist = calculateTouchDistance(touches[0], touches[1])
     }
   }
@@ -343,8 +437,8 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
       if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
         touchStateRef.current.hasMovedSignificantly = true
       }
-      viewportRef.current.offsetX = touchStateRef.current.dragStartOffset.x + dx
-      viewportRef.current.offsetY = touchStateRef.current.dragStartOffset.y + dy
+      viewportRef.current.offsetX = touchStateRef.current.dragStartOffset.offsetX + dx
+      viewportRef.current.offsetY = touchStateRef.current.dragStartOffset.offsetY + dy
       renderCanvas()
     } else if (touches.length >= 2) {
       const dist = calculateTouchDistance(touches[0], touches[1])
@@ -368,14 +462,21 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     }
     touchStateRef.current.isDragging = false
     touchStateRef.current.lastTouchDist = 0
+    setIsDragging(false)
   }
 
   // 鼠标操作（Web / H5 调试）
   const handleMouseDown = (e: any) => {
+    if (e.button !== undefined && e.button !== 0) return
+    if (e && typeof e.preventDefault === 'function') e.preventDefault()
     touchStateRef.current.isDragging = true
     touchStateRef.current.hasMovedSignificantly = false
     touchStateRef.current.dragStartScreen = { x: e.clientX, y: e.clientY }
-    touchStateRef.current.dragStartOffset = { ...viewportRef.current }
+    touchStateRef.current.dragStartOffset = {
+      offsetX: viewportRef.current.offsetX,
+      offsetY: viewportRef.current.offsetY
+    }
+    setIsDragging(true)
   }
 
   const handleMouseMove = (e: any) => {
@@ -385,8 +486,8 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
       touchStateRef.current.hasMovedSignificantly = true
     }
-    viewportRef.current.offsetX = touchStateRef.current.dragStartOffset.x + dx
-    viewportRef.current.offsetY = touchStateRef.current.dragStartOffset.y + dy
+    viewportRef.current.offsetX = touchStateRef.current.dragStartOffset.offsetX + dx
+    viewportRef.current.offsetY = touchStateRef.current.dragStartOffset.offsetY + dy
     renderCanvas()
   }
 
@@ -395,16 +496,58 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
       handleCellTap(e.clientX, e.clientY)
     }
     touchStateRef.current.isDragging = false
+    setIsDragging(false)
   }
 
+  // Web 端支持全局鼠标拖拽监听，防止拖拽划出画布断掉
+  useEffect(() => {
+    if (process.env.TARO_ENV === 'weapp') return
+
+    const onGlobalMouseMove = (e: MouseEvent) => {
+      if (!touchStateRef.current.isDragging) return
+      const dx = e.clientX - touchStateRef.current.dragStartScreen.x
+      const dy = e.clientY - touchStateRef.current.dragStartScreen.y
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        touchStateRef.current.hasMovedSignificantly = true
+      }
+      viewportRef.current.offsetX = touchStateRef.current.dragStartOffset.offsetX + dx
+      viewportRef.current.offsetY = touchStateRef.current.dragStartOffset.offsetY + dy
+      renderCanvas()
+    }
+
+    const onGlobalMouseUp = (e: MouseEvent) => {
+      if (touchStateRef.current.isDragging) {
+        if (!touchStateRef.current.hasMovedSignificantly) {
+          handleCellTap(e.clientX, e.clientY)
+        }
+        touchStateRef.current.isDragging = false
+        setIsDragging(false)
+      }
+    }
+
+    window.addEventListener('mousemove', onGlobalMouseMove)
+    window.addEventListener('mouseup', onGlobalMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onGlobalMouseMove)
+      window.removeEventListener('mouseup', onGlobalMouseUp)
+    }
+  }, [renderCanvas, handleCellTap])
+
   const handleWheel = (e: any) => {
-    e.preventDefault?.()
+    if (e && typeof e.preventDefault === 'function') e.preventDefault()
     const factor = e.deltaY < 0 ? 1.15 : 0.88
-    zoomAtPoint(e.clientX, e.clientY, factor)
+    const node = canvasNodeRef.current
+    const rect = node && typeof node.getBoundingClientRect === 'function' ? node.getBoundingClientRect() : null
+    const clientX = rect ? e.clientX - rect.left : canvasWidthRef.current / 2
+    const clientY = rect ? e.clientY - rect.top : canvasHeightRef.current / 2
+    zoomAtPoint(clientX, clientY, factor)
   }
 
   return (
-    <View className="canvas-container" id="canvasContainer">
+    <View
+      className={`canvas-container tool-${tool} theme-${theme} ${isDragging ? 'is-dragging' : ''}`}
+      id="canvasContainer"
+    >
       <Canvas
         id="beadCanvas"
         canvasId="beadCanvas"
@@ -417,7 +560,6 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
       />
 
@@ -425,6 +567,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
         <View
           className="zoom-btn"
           onClick={() => zoomAtPoint(canvasWidthRef.current / 2, canvasHeightRef.current / 2, 1.25)}
+          title="放大"
         >
           +
         </View>
@@ -432,6 +575,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
         <View
           className="zoom-btn"
           onClick={() => zoomAtPoint(canvasWidthRef.current / 2, canvasHeightRef.current / 2, 0.8)}
+          title="缩小"
         >
           -
         </View>
@@ -441,8 +585,9 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
             centerAndFitBoard()
             renderCanvas()
           }}
+          title="始终居中对齐"
         >
-          复位
+          居中
         </View>
       </View>
     </View>

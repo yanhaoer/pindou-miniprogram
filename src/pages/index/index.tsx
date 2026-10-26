@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { View, Text, Canvas } from '@tarojs/components'
-import Taro from '@tarojs/taro'
+import Taro, { useRouter } from '@tarojs/taro'
 import { BeadCanvas, type BeadCanvasRef } from '@/components/BeadCanvas'
 import { ToolBar, type EditTool } from '@/components/ToolBar'
 import { ColorPaletteBar } from '@/components/ColorPaletteBar'
@@ -22,7 +22,22 @@ import {
 import { SAMPLES, sampleToImageData, type SamplePattern } from '@/assets/samples'
 import './index.scss'
 
+export type ThemeMode = 'dark' | 'light'
+
 export default function IndexPage() {
+  const router = useRouter()
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    try {
+      const saved = Taro.getStorageSync('pindou_theme')
+      if (saved === 'light' || saved === 'dark') return saved
+      if (typeof Taro.getSystemInfoSync === 'function') {
+        const sys = Taro.getSystemInfoSync()
+        if (sys && sys.theme === 'light') return 'light'
+      }
+    } catch (e) {}
+    return 'dark'
+  })
+
   const [currentBrand, setCurrentBrand] = useState<BeadBrand>('artkal')
   const [boardWidth, setBoardWidth] = useState(29)
   const [boardHeight, setBoardHeight] = useState(29)
@@ -48,12 +63,34 @@ export default function IndexPage() {
   const rawImagePixelsRef = useRef<Uint8ClampedArray | null>(null)
   const rawImageWidthRef = useRef(0)
   const rawImageHeightRef = useRef(0)
+  const hasLoadedInitialSampleRef = useRef(false)
 
   const currentPalette = useMemo(() => getPalette(currentBrand), [currentBrand])
 
   const updateHistoryState = useCallback(() => {
     setCanUndo(historyRef.current.canUndo)
     setCanRedo(historyRef.current.canRedo)
+  }, [])
+
+  // 动态同步小程序原生导航栏色彩
+  useEffect(() => {
+    if (process.env.TARO_ENV === 'weapp') {
+      Taro.setNavigationBarColor({
+        frontColor: theme === 'dark' ? '#ffffff' : '#000000',
+        backgroundColor: theme === 'dark' ? '#16171d' : '#ffffff',
+        animation: { duration: 200, timingFunc: 'linear' }
+      }).catch(() => {})
+    }
+  }, [theme])
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => {
+      const next: ThemeMode = prev === 'dark' ? 'light' : 'dark'
+      try {
+        Taro.setStorageSync('pindou_theme', next)
+      } catch (e) {}
+      return next
+    })
   }, [])
 
   const refreshQuantizedGrid = useCallback((
@@ -108,7 +145,12 @@ export default function IndexPage() {
     refreshQuantizedGrid(sample.width, sample.height, useDither, currentPalette)
   }, [refreshQuantizedGrid, useDither, currentPalette])
 
-  const decodeImageToPixels = useCallback((imageSource: string) => {
+  const decodeImageToPixels = useCallback((
+    imageSource: string,
+    targetW?: number,
+    targetH?: number,
+    targetPalette?: any
+  ) => {
     Taro.showLoading({ title: '解析图片中...' })
     const isWeApp = process.env.TARO_ENV === 'weapp'
 
@@ -147,9 +189,12 @@ export default function IndexPage() {
         rawImageWidthRef.current = w
         rawImageHeightRef.current = h
 
-        const maxDimension = Math.max(boardWidth, boardHeight)
-        let newW = boardWidth
-        let newH = boardHeight
+        const baseW = targetW ?? boardWidth
+        const baseH = targetH ?? boardHeight
+        const pal = targetPalette ?? currentPalette
+        const maxDimension = Math.max(baseW, baseH)
+        let newW = baseW
+        let newH = baseH
         if (w >= h) {
           newW = maxDimension
           newH = Math.max(8, Math.round((maxDimension * h) / w))
@@ -161,7 +206,7 @@ export default function IndexPage() {
         setBoardHeight(newH)
 
         Taro.hideLoading()
-        refreshQuantizedGrid(newW, newH, useDither, currentPalette)
+        refreshQuantizedGrid(newW, newH, useDither, pal)
       }
 
       img.onerror = (err) => {
@@ -172,13 +217,16 @@ export default function IndexPage() {
 
       img.src = imageSource
     } else {
-      // 微信小程序环境
+      // 微信小程序环境：优先使用高稳定性原生离屏 Canvas 2D，无需依赖 DOM 挂载时机
       Taro.getImageInfo({
         src: imageSource,
         success: (info) => {
-          const maxDimension = Math.max(boardWidth, boardHeight)
-          let newW = boardWidth
-          let newH = boardHeight
+          const baseW = targetW ?? boardWidth
+          const baseH = targetH ?? boardHeight
+          const pal = targetPalette ?? currentPalette
+          const maxDimension = Math.max(baseW, baseH)
+          let newW = baseW
+          let newH = baseH
           if (info.width >= info.height) {
             newW = maxDimension
             newH = Math.max(8, Math.round((maxDimension * info.height) / info.width))
@@ -189,52 +237,113 @@ export default function IndexPage() {
           setBoardWidth(newW)
           setBoardHeight(newH)
 
-          const query = Taro.createSelectorQuery()
-          query
-            .select('#exportCanvas')
-            .fields({ node: true, size: true })
-            .exec((res: any) => {
-              if (!res || !res[0] || !res[0].node) {
-                Taro.hideLoading()
-                Taro.showToast({ title: '画布就绪异常', icon: 'none' })
-                return
-              }
-              const expCanvas = res[0].node
-              const expCtx = expCanvas.getContext('2d')
-              const img = expCanvas.createImage()
-              img.onload = () => {
-                const MAX_DIM = 600
-                let w = info.width
-                let h = info.height
-                if (w > MAX_DIM || h > MAX_DIM) {
-                  if (w > h) {
-                    h = Math.round((h * MAX_DIM) / w)
-                    w = MAX_DIM
-                  } else {
-                    w = Math.round((w * MAX_DIM) / h)
-                    h = MAX_DIM
+          const MAX_DIM = 600
+          let w = info.width
+          let h = info.height
+          if (w > MAX_DIM || h > MAX_DIM) {
+            if (w > h) {
+              h = Math.round((h * MAX_DIM) / w)
+              w = MAX_DIM
+            } else {
+              w = Math.round((w * MAX_DIM) / h)
+              h = MAX_DIM
+            }
+          }
+
+          const realSrc = info.path || imageSource
+
+          const runFallbackQueryCanvas = () => {
+            let retry = 0
+            const tryQuery = () => {
+              const query = Taro.createSelectorQuery()
+              query
+                .select('#exportCanvas')
+                .fields({ node: true, size: true })
+                .exec((res: any) => {
+                  if (!res || !res[0] || !res[0].node) {
+                    if (retry < 30) {
+                      retry++
+                      setTimeout(tryQuery, 60)
+                      return
+                    }
+                    Taro.hideLoading()
+                    Taro.showToast({ title: '画布初始化中，请稍候重试', icon: 'none' })
+                    return
                   }
+                  const expCanvas = res[0].node
+                  const expCtx = expCanvas.getContext('2d')
+                  const img = expCanvas.createImage()
+                  img.onload = () => {
+                    expCanvas.width = w
+                    expCanvas.height = h
+                    expCtx.clearRect(0, 0, w, h)
+                    expCtx.drawImage(img, 0, 0, w, h)
+                    const imgData = expCtx.getImageData(0, 0, w, h)
+                    rawImagePixelsRef.current = imgData.data
+                    rawImageWidthRef.current = w
+                    rawImageHeightRef.current = h
+                    Taro.hideLoading()
+                    refreshQuantizedGrid(newW, newH, useDither, pal)
+                  }
+                  img.onerror = () => {
+                    Taro.hideLoading()
+                    Taro.showToast({ title: '图片解码失败', icon: 'none' })
+                  }
+                  img.src = realSrc
+                })
+            }
+            tryQuery()
+          }
+
+          // 1. 尝试使用 wx.createOffscreenCanvas / Taro.createOffscreenCanvas
+          let offscreenCanvas: any = null
+          try {
+            if (typeof (wx as any) !== 'undefined' && typeof (wx as any).createOffscreenCanvas === 'function') {
+              offscreenCanvas = (wx as any).createOffscreenCanvas({ type: '2d', width: w, height: h })
+            } else if (typeof (Taro as any).createOffscreenCanvas === 'function') {
+              offscreenCanvas = (Taro as any).createOffscreenCanvas({ type: '2d', width: w, height: h })
+            }
+          } catch (e) {
+            console.warn('createOffscreenCanvas error', e)
+          }
+
+          if (offscreenCanvas) {
+            try {
+              const expCtx = offscreenCanvas.getContext('2d')
+              const img = offscreenCanvas.createImage()
+              img.onload = () => {
+                try {
+                  expCtx.clearRect(0, 0, w, h)
+                  expCtx.drawImage(img, 0, 0, w, h)
+                  const imgData = expCtx.getImageData(0, 0, w, h)
+                  rawImagePixelsRef.current = imgData.data
+                  rawImageWidthRef.current = w
+                  rawImageHeightRef.current = h
+                  Taro.hideLoading()
+                  refreshQuantizedGrid(newW, newH, useDither, pal)
+                } catch (drawErr) {
+                  console.error('Offscreen canvas process failed', drawErr)
+                  runFallbackQueryCanvas()
                 }
-                expCanvas.width = w
-                expCanvas.height = h
-                expCtx.drawImage(img, 0, 0, w, h)
-                const imgData = expCtx.getImageData(0, 0, w, h)
-                rawImagePixelsRef.current = imgData.data
-                rawImageWidthRef.current = w
-                rawImageHeightRef.current = h
-                Taro.hideLoading()
-                refreshQuantizedGrid(newW, newH, useDither, currentPalette)
               }
-              img.onerror = () => {
-                Taro.hideLoading()
-                Taro.showToast({ title: '小程序图片解码失败', icon: 'none' })
+              img.onerror = (err: any) => {
+                console.error('Offscreen canvas image load error', err)
+                runFallbackQueryCanvas()
               }
-              img.src = imageSource
-            })
+              img.src = realSrc
+              return
+            } catch (canvasErr) {
+              console.warn('Offscreen canvas setup error', canvasErr)
+            }
+          }
+
+          // 2. 备用兜底机制
+          runFallbackQueryCanvas()
         },
-        fail: () => {
+        fail: (err) => {
           Taro.hideLoading()
           Taro.showToast({ title: '获取图片信息失败', icon: 'none' })
+          console.error('getImageInfo fail', err)
         }
       })
     }
@@ -259,14 +368,7 @@ export default function IndexPage() {
 
   const handleCellClick = useCallback(({ x, y, cell }: { x: number; y: number; cell: BeadCell }) => {
     if (currentTool === 'view') {
-      if (!cell.isEmpty) {
-        if (selectedColorCode === cell.color.code) {
-          setSelectedColorCode(null)
-        } else {
-          setSelectedColorCode(cell.color.code)
-          setActiveColor(cell.color)
-        }
-      }
+      // 平移漫游模式：用于纯浏览与拖动，不切换选色或暗化画布
       return
     }
 
@@ -418,19 +520,49 @@ export default function IndexPage() {
     }
   }, [grid, colorStats, currentPalette])
 
-  // 首屏挂载加载默认超级蘑菇
+  // 挂载加载：根据路由参数初始化选图、尺寸与色系
   useEffect(() => {
-    loadSample(SAMPLES[0])
-  }, [loadSample])
+    if (!hasLoadedInitialSampleRef.current) {
+      hasLoadedInitialSampleRef.current = true
+      const { width, height, brand, imagePath } = router.params
+      const targetW = Number(width) || boardWidth
+      const targetH = Number(height) || boardHeight
+      const targetBrand = (brand as BeadBrand) || currentBrand
+
+      if (width) setBoardWidth(targetW)
+      if (height) setBoardHeight(targetH)
+      if (brand) setCurrentBrand(targetBrand)
+
+      if (imagePath) {
+        decodeImageToPixels(
+          decodeURIComponent(imagePath),
+          targetW,
+          targetH,
+          getPalette(targetBrand)
+        )
+      } else {
+        loadSample(SAMPLES[0])
+      }
+    }
+  }, [router.params, decodeImageToPixels, loadSample, boardWidth, boardHeight, currentBrand])
+
+  const handleBackHome = () => {
+    Taro.navigateBack().catch(() => {
+      Taro.redirectTo({ url: '/pages/home/index' })
+    })
+  }
 
   return (
-    <View className="app-container">
+    <View className={`app-container theme-${theme}`}>
       {/* 顶部状态与主操作栏 */}
       <View className="top-nav">
         <View className="brand-title">
-          <Text className="app-icon">🎨</Text>
+          <View className="back-home-btn" onClick={handleBackHome} title="返回首页">
+            <Text className="back-arrow">◀</Text>
+            <Text className="back-text">首页</Text>
+          </View>
           <View className="title-meta">
-            <Text className="main-title">拼豆生成器</Text>
+            <Text className="main-title">小呱拼豆</Text>
             <Text className="sub-title">
               {currentPalette.name} · {boardWidth}×{boardHeight}
             </Text>
@@ -438,6 +570,13 @@ export default function IndexPage() {
         </View>
 
         <View className="nav-actions">
+          <View
+            className="theme-toggle-btn"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? '切换为明亮模式' : '切换为暗夜模式'}
+          >
+            <Text className="theme-icon">{theme === 'dark' ? '🌙' : '☀️'}</Text>
+          </View>
           <View className="nav-btn secondary" onClick={() => setShowSamplePicker(true)}>
             <Text>样例</Text>
           </View>
@@ -468,6 +607,7 @@ export default function IndexPage() {
           grid={grid}
           selectedColorCode={selectedColorCode}
           tool={currentTool}
+          theme={theme}
           activeColor={activeColor}
           onCellClick={handleCellClick}
         />

@@ -1,11 +1,12 @@
 export default defineAppConfig({
   pages: [
+    'pages/home/index',
     'pages/index/index'
   ],
   window: {
     backgroundTextStyle: 'light',
     navigationBarBackgroundColor: '#18181b',
-    navigationBarTitleText: '拼豆生成器',
+    navigationBarTitleText: '小呱拼豆',
     navigationBarTextStyle: 'white'
   }
 })

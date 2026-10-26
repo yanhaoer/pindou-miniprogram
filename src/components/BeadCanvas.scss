@@ -5,12 +5,41 @@
   overflow: hidden;
   background-color: #121316;
   touch-action: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &.tool-view {
+    cursor: grab;
+    &.is-dragging {
+      cursor: grabbing;
+    }
+  }
+
+  &.tool-pencil {
+    cursor: crosshair;
+  }
+
+  &.tool-bucket {
+    cursor: pointer;
+  }
+
+  &.tool-eyedropper {
+    cursor: copy;
+  }
+
+  &.tool-eraser {
+    cursor: cell;
+  }
 }
 
 .bead-canvas {
   width: 100%;
   height: 100%;
   display: block;
+  cursor: inherit;
+  user-select: none;
 }
 
 .zoom-controls {
@@ -58,4 +87,33 @@
 .reset-btn {
   font-size: 11px;
   color: #38bdf8;
+}
+
+/* 明亮模式样式覆盖 */
+.canvas-container.theme-light {
+  background-color: #e2e8f0;
+
+  .zoom-controls {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  .zoom-btn {
+    background: rgba(0, 0, 0, 0.06);
+    color: #0f172a;
+
+    &:active {
+      background: rgba(0, 0, 0, 0.14);
+    }
+  }
+
+  .zoom-text {
+    color: #475569;
+  }
+
+  .reset-btn {
+    color: #0284c7;
+    font-weight: bold;
+  }
 }

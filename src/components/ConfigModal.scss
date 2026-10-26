@@ -203,3 +203,102 @@
     color: #ffffff;
   }
 }
+
+/* 明亮模式适配 */
+.theme-light .modal-content {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.15);
+
+  .modal-header {
+    border-bottom: 1px solid #f1f5f9;
+
+    .modal-title {
+      color: #0f172a;
+    }
+
+    .close-btn {
+      color: #64748b;
+    }
+  }
+
+  .section-label {
+    color: #0f172a;
+  }
+
+  .field-hint {
+    color: #64748b;
+  }
+
+  .pill-btn {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+
+    .pill-title {
+      color: #0f172a;
+    }
+
+    .pill-desc {
+      color: #64748b;
+    }
+
+    &.active {
+      border-color: #3b82f6;
+      background: #eff6ff;
+
+      .pill-title {
+        color: #2563eb;
+      }
+    }
+  }
+
+  .preset-btn {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+
+    .preset-name {
+      color: #0f172a;
+    }
+
+    .preset-sub {
+      color: #0284c7;
+    }
+
+    &.active {
+      border-color: #3b82f6;
+      background: #eff6ff;
+
+      .preset-name {
+        color: #2563eb;
+      }
+    }
+  }
+
+  .input-wrap {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+
+    .input-prefix {
+      color: #64748b;
+    }
+
+    .num-input {
+      color: #0f172a;
+    }
+  }
+
+  .x-mark {
+    color: #94a3b8;
+  }
+
+  .modal-footer {
+    background: #f8fafc;
+    border-top: 1px solid #f1f5f9;
+
+    .btn.secondary {
+      background: #e2e8f0;
+      color: #334155;
+    }
+  }
+}
+
