@@ -106,25 +106,32 @@ function initCanvas() {
   // #ifndef MP-WEIXIN
   // H5 / Web 环境
   nextTick(() => {
-    const el = document.getElementById('beadCanvas') as HTMLCanvasElement
-    if (!el) return
-    canvas = el
-    ctx = el.getContext('2d')
-    const rect = el.parentElement?.getBoundingClientRect()
-    const w = rect?.width || 360
-    const h = rect?.height || 480
-    canvasWidth.value = w
-    canvasHeight.value = h
-    dpr.value = window.devicePixelRatio || 1
+    function tryMount() {
+      const root = document.getElementById('beadCanvas')
+      const el = (root?.querySelector('canvas') || root) as HTMLCanvasElement
+      if (!el || typeof el.getContext !== 'function') {
+        setTimeout(tryMount, 50)
+        return
+      }
+      canvas = el
+      ctx = el.getContext('2d')
+      const rect = (root || el).parentElement?.getBoundingClientRect()
+      const w = rect?.width || 360
+      const h = rect?.height || 480
+      canvasWidth.value = w
+      canvasHeight.value = h
+      dpr.value = window.devicePixelRatio || 1
 
-    el.width = w * dpr.value
-    el.height = h * dpr.value
-    el.style.width = `${w}px`
-    el.style.height = `${h}px`
-    ctx.scale(dpr.value, dpr.value)
+      el.width = w * dpr.value
+      el.height = h * dpr.value
+      el.style.width = `${w}px`
+      el.style.height = `${h}px`
+      ctx.scale(dpr.value, dpr.value)
 
-    centerAndFitBoard()
-    render()
+      centerAndFitBoard()
+      render()
+    }
+    tryMount()
   })
   // #endif
 }
@@ -399,11 +406,23 @@ function resetView() {
 }
 
 watch(
-  () => [props.grid, props.selectedColorCode],
+  () => props.grid,
+  (newGrid) => {
+    if (newGrid && newGrid.length > 0) {
+      nextTick(() => {
+        centerAndFitBoard()
+        render()
+      })
+    }
+  },
+  { deep: false }
+)
+
+watch(
+  () => props.selectedColorCode,
   () => {
     nextTick(() => render())
-  },
-  { deep: true }
+  }
 )
 
 onMounted(() => {

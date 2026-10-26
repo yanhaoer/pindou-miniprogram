@@ -187,85 +187,142 @@ function loadSample(sample: SamplePattern) {
 }
 
 function handlePickImage() {
-  // #ifdef MP-WEIXIN
-  uni.chooseMedia({
+  uni.chooseImage({
     count: 1,
-    mediaType: ['image'],
+    sizeType: ['original', 'compressed'],
     sourceType: ['album', 'camera'],
     success: (res) => {
-      const tempPath = res.tempFiles[0].tempFilePath
-      decodeImageToPixels(tempPath)
+      const tempPath = res.tempFilePaths[0]
+      if (tempPath) {
+        decodeImageToPixels(tempPath)
+      }
+    },
+    fail: (err) => {
+      console.log('User cancelled or failed to choose image', err)
     }
   })
-  // #endif
-
-  // #ifndef MP-WEIXIN
-  // H5 选图
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = 'image/*'
-  input.onchange = (e: any) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (re) => {
-      decodeImageToPixels(re.target?.result as string)
-    }
-    reader.readAsDataURL(file)
-  }
-  input.click()
-  // #endif
 }
 
 function decodeImageToPixels(imageSource: string) {
-  uni.showLoading({ title: '加载图片中...' })
+  uni.showLoading({ title: '解析图片中...' })
 
   // #ifndef MP-WEIXIN
   const img = new Image()
-  img.crossOrigin = 'anonymous'
+  if (imageSource.startsWith('http://') || imageSource.startsWith('https://')) {
+    img.crossOrigin = 'anonymous'
+  }
+
   img.onload = () => {
+    const MAX_DIM = 600
+    let w = img.width
+    let h = img.height
+    if (w > MAX_DIM || h > MAX_DIM) {
+      if (w > h) {
+        h = Math.round((h * MAX_DIM) / w)
+        w = MAX_DIM
+      } else {
+        w = Math.round((w * MAX_DIM) / h)
+        h = MAX_DIM
+      }
+    }
+
     const offCanvas = document.createElement('canvas')
-    offCanvas.width = img.width
-    offCanvas.height = img.height
+    offCanvas.width = w
+    offCanvas.height = h
     const offCtx = offCanvas.getContext('2d')
-    if (!offCtx) return
-    offCtx.drawImage(img, 0, 0)
-    const imgData = offCtx.getImageData(0, 0, img.width, img.height)
+    if (!offCtx) {
+      uni.hideLoading()
+      return
+    }
+    offCtx.drawImage(img, 0, 0, w, h)
+    const imgData = offCtx.getImageData(0, 0, w, h)
     rawImagePixels = imgData.data
-    rawImageWidth = img.width
-    rawImageHeight = img.height
+    rawImageWidth = w
+    rawImageHeight = h
+
+    const maxDimension = Math.max(boardWidth.value, boardHeight.value)
+    if (w >= h) {
+      boardWidth.value = maxDimension
+      boardHeight.value = Math.max(8, Math.round((maxDimension * h) / w))
+    } else {
+      boardHeight.value = maxDimension
+      boardWidth.value = Math.max(8, Math.round((maxDimension * w) / h))
+    }
+
     uni.hideLoading()
     refreshQuantizedGrid()
   }
+
+  img.onerror = (err) => {
+    uni.hideLoading()
+    uni.showToast({ title: '图片加载失败', icon: 'none' })
+    console.error('Image load error', err)
+  }
+
   img.src = imageSource
   // #endif
 
   // #ifdef MP-WEIXIN
-  const query = uni.createSelectorQuery().in(instance)
-  query
-    .select('#exportCanvas')
-    .fields({ node: true, size: true })
-    .exec((res: any) => {
-      if (!res || !res[0] || !res[0].node) {
-        uni.hideLoading()
-        return
+  uni.getImageInfo({
+    src: imageSource,
+    success: (info) => {
+      const maxDimension = Math.max(boardWidth.value, boardHeight.value)
+      if (info.width >= info.height) {
+        boardWidth.value = maxDimension
+        boardHeight.value = Math.max(8, Math.round((maxDimension * info.height) / info.width))
+      } else {
+        boardHeight.value = maxDimension
+        boardWidth.value = Math.max(8, Math.round((maxDimension * info.width) / info.height))
       }
-      const expCanvas = res[0].node
-      const expCtx = expCanvas.getContext('2d')
-      const img = expCanvas.createImage()
-      img.onload = () => {
-        expCanvas.width = img.width
-        expCanvas.height = img.height
-        expCtx.drawImage(img, 0, 0)
-        const imgData = expCtx.getImageData(0, 0, img.width, img.height)
-        rawImagePixels = imgData.data
-        rawImageWidth = img.width
-        rawImageHeight = img.height
-        uni.hideLoading()
-        refreshQuantizedGrid()
-      }
-      img.src = imageSource
-    })
+
+      const query = uni.createSelectorQuery().in(instance)
+      query
+        .select('#exportCanvas')
+        .fields({ node: true, size: true })
+        .exec((res: any) => {
+          if (!res || !res[0] || !res[0].node) {
+            uni.hideLoading()
+            uni.showToast({ title: '画布就绪异常', icon: 'none' })
+            return
+          }
+          const expCanvas = res[0].node
+          const expCtx = expCanvas.getContext('2d')
+          const img = expCanvas.createImage()
+          img.onload = () => {
+            const MAX_DIM = 600
+            let w = info.width
+            let h = info.height
+            if (w > MAX_DIM || h > MAX_DIM) {
+              if (w > h) {
+                h = Math.round((h * MAX_DIM) / w)
+                w = MAX_DIM
+              } else {
+                w = Math.round((w * MAX_DIM) / h)
+                h = MAX_DIM
+              }
+            }
+            expCanvas.width = w
+            expCanvas.height = h
+            expCtx.drawImage(img, 0, 0, w, h)
+            const imgData = expCtx.getImageData(0, 0, w, h)
+            rawImagePixels = imgData.data
+            rawImageWidth = w
+            rawImageHeight = h
+            uni.hideLoading()
+            refreshQuantizedGrid()
+          }
+          img.onerror = () => {
+            uni.hideLoading()
+            uni.showToast({ title: '小程序图片解码失败', icon: 'none' })
+          }
+          img.src = imageSource
+        })
+    },
+    fail: () => {
+      uni.hideLoading()
+      uni.showToast({ title: '获取图片信息失败', icon: 'none' })
+    }
+  })
   // #endif
 }
 
