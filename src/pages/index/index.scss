@@ -205,20 +205,69 @@
   margin-top: 2px;
 }
 
+.original-image-preview {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  width: 76px;
+  height: 76px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  background: #181920;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  z-index: 10;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+
+  &:active {
+    transform: scale(0.94);
+    border-color: #3b82f6;
+  }
+
+  .preview-thumb-img {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .preview-thumb-badge {
+    position: absolute;
+    left: 4px;
+    bottom: 4px;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    padding: 1px 5px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0.5px solid rgba(255, 255, 255, 0.15);
+  }
+
+  .thumb-badge-text {
+    font-size: 9px;
+    color: #ffffff;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+}
+
 .offscreen-wrapper {
   position: fixed;
-  left: 0;
-  top: 0;
-  width: 300px;
-  height: 300px;
-  z-index: -999;
+  left: -9999px;
+  top: -9999px;
+  width: 600px;
+  height: 600px;
+  z-index: -9999;
   opacity: 0;
   pointer-events: none;
+  overflow: hidden;
 }
 
 .export-canvas {
-  width: 300px;
-  height: 300px;
+  width: 600px;
+  height: 600px;
 }
 
 /* 明亮模式顶层与公共弹层适配 */
@@ -284,6 +333,20 @@
         background: #eff6ff;
         border-color: #3b82f6;
       }
+    }
+  }
+
+  .original-image-preview {
+    border-color: rgba(0, 0, 0, 0.15);
+    background: #ffffff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+
+    &:active {
+      border-color: #3b82f6;
+    }
+
+    .preview-thumb-badge {
+      background: rgba(15, 23, 42, 0.7);
     }
   }
 }

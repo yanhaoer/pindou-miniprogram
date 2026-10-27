@@ -83,3 +83,27 @@ export function rgbToHex(r: number, g: number, b: number): string {
   const toHex = (v: number) => clamp(v).toString(16).padStart(2, '0')
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase()
 }
+
+/**
+ * Calculate high contrast text color (black or white) for a given background hex color
+ */
+export function getContrastTextColor(hex: string): string {
+  const [r, g, b] = hexToRgb(hex)
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return lum > 0.5 ? '#111111' : '#FFFFFF'
+}
+
+/**
+ * Determine whether color code text should be displayed based on toggle state and cell size
+ */
+export function shouldShowColorCode(showCodes: boolean, scaledCell: number, threshold = 14): boolean {
+  return showCodes && scaledCell >= threshold
+}
+
+/**
+ * Compute optimal font size for color code inside a grid cell
+ */
+export function computeColorCodeFontSize(scaledCell: number, min = 8, max = 16): number {
+  return Math.min(Math.max(min, Math.floor(scaledCell * 0.42)), max)
+}
+

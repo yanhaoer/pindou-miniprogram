@@ -17,7 +17,14 @@ import {
   calculateTouchCenter,
   type Viewport
 } from '@/utils/gesture'
+import {
+  getContrastTextColor,
+  shouldShowColorCode,
+  computeColorCodeFontSize
+} from '@/utils/color-space'
 import './BeadCanvas.scss'
+
+export { getContrastTextColor } from '@/utils/color-space'
 
 export interface BeadCanvasRef {
   render: () => void
@@ -31,17 +38,10 @@ export interface BeadCanvasProps {
   activeColor?: BeadColor | null
   baseCellSize?: number
   theme?: 'dark' | 'light'
+  showColorCodes?: boolean
+  onToggleColorCodes?: (show: boolean) => void
   onCellClick?: (payload: { x: number; y: number; cell: BeadCell }) => void
   onPickColor?: (color: BeadColor) => void
-}
-
-function getContrastTextColor(hex: string): string {
-  const num = parseInt(hex.replace('#', ''), 16)
-  const r = (num >> 16) & 255
-  const g = (num >> 8) & 255
-  const b = num & 255
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  return lum > 0.5 ? '#111111' : '#FFFFFF'
 }
 
 export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref) => {
@@ -63,6 +63,18 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
 
   const [scaleDisplay, setScaleDisplay] = useState(100)
   const [isDragging, setIsDragging] = useState(false)
+  const [internalShowColorCodes, setInternalShowColorCodes] = useState(false)
+
+  const isShowColorCodesControlled = props.showColorCodes !== undefined
+  const showColorCodes = isShowColorCodesControlled ? props.showColorCodes! : internalShowColorCodes
+
+  const handleToggleColorCodes = useCallback(() => {
+    const nextVal = !showColorCodes
+    if (!isShowColorCodesControlled) {
+      setInternalShowColorCodes(nextVal)
+    }
+    props.onToggleColorCodes?.(nextVal)
+  }, [showColorCodes, isShowColorCodesControlled, props.onToggleColorCodes])
 
   const viewportRef = useRef<Viewport>({
     scale: 1.0,
@@ -121,15 +133,13 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     const gridW = grid[0].length
     const { scale, offsetX, offsetY } = viewportRef.current
     const scaledCell = baseCellSize * scale
-    const beadRadius = (scaledCell * 0.9) / 2
-    const holeRadius = beadRadius * 0.38
 
     const isLight = theme === 'light'
     const boardBgColor = isLight ? '#ffffff' : '#22232a'
-    const emptyHoleBg = isLight ? '#e2e8f0' : '#2d2e36'
-    const holeCenterBg = isLight ? '#cbd5e1' : '#18191f'
-    const rulerLineColor = isLight ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.15)'
-    const beadStrokeColor = isLight ? 'rgba(0, 0, 0, 0.18)' : 'rgba(0, 0, 0, 0.3)'
+    const emptyCellBg = isLight ? '#f1f5f9' : '#1e1f26'
+    const emptyCellBorder = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.05)'
+    const cellBorderColor = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'
+    const rulerLineColor = isLight ? 'rgba(0, 0, 0, 0.16)' : 'rgba(255, 255, 255, 0.18)'
 
     // 1. 底板底色
     const boardW = gridW * scaledCell
@@ -144,63 +154,54 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     const minY = Math.max(0, Math.floor(-offsetY / scaledCell))
     const maxY = Math.min(gridH, Math.ceil((height - offsetY) / scaledCell))
 
-    // 3. 循环绘制每个珠子
+    // 3. 循环绘制每个方块
     for (let y = minY; y < maxY; y++) {
       for (let x = minX; x < maxX; x++) {
         const cell = grid[y][x]
         const cellLeft = offsetX + x * scaledCell
         const cellTop = offsetY + y * scaledCell
-        const centerX = cellLeft + scaledCell / 2
-        const centerY = cellTop + scaledCell / 2
 
         if (cell.isEmpty) {
-          ctx.fillStyle = emptyHoleBg
-          ctx.beginPath()
-          ctx.arc(centerX, centerY, Math.max(1.5, holeRadius * 0.8), 0, Math.PI * 2)
-          ctx.fill()
+          ctx.fillStyle = emptyCellBg
+          ctx.fillRect(cellLeft, cellTop, scaledCell, scaledCell)
+          ctx.strokeStyle = emptyCellBorder
+          ctx.lineWidth = 0.5
+          ctx.strokeRect(cellLeft, cellTop, scaledCell, scaledCell)
           continue
         }
 
         const isTarget = !selectedColorCode || cell.color.code === selectedColorCode
 
         // 寻豆模式暗化
-        ctx.globalAlpha = isTarget ? 1.0 : (isLight ? 0.16 : 0.22)
+        ctx.globalAlpha = isTarget ? 1.0 : (isLight ? 0.18 : 0.22)
 
-        // 外圈珠体
+        // 绘制方块主体
         ctx.fillStyle = cell.color.hex
-        ctx.beginPath()
-        ctx.arc(centerX, centerY, beadRadius, 0, Math.PI * 2)
-        ctx.fill()
+        ctx.fillRect(cellLeft, cellTop, scaledCell, scaledCell)
 
-        // 描边
-        ctx.lineWidth = Math.max(0.8, 1.2 * scale)
-        ctx.strokeStyle = beadStrokeColor
-        ctx.stroke()
+        // 方块边界细线
+        ctx.strokeStyle = cellBorderColor
+        ctx.lineWidth = 0.5
+        ctx.strokeRect(cellLeft, cellTop, scaledCell, scaledCell)
 
-        // 中心插孔
-        ctx.fillStyle = holeCenterBg
-        ctx.beginPath()
-        ctx.arc(centerX, centerY, holeRadius, 0, Math.PI * 2)
-        ctx.fill()
-
-        // 目标色号专属高亮发光环
+        // 目标色号专属高亮框
         if (selectedColorCode && cell.color.code === selectedColorCode) {
           ctx.globalAlpha = 1.0
-          ctx.lineWidth = Math.max(2.0, 2.8 * scale)
+          ctx.lineWidth = Math.max(2.0, 2.5 * scale)
           ctx.strokeStyle = '#FFE600'
-          ctx.beginPath()
-          ctx.arc(centerX, centerY, beadRadius + 1.5, 0, Math.PI * 2)
-          ctx.stroke()
+          ctx.strokeRect(cellLeft, cellTop, scaledCell, scaledCell)
         }
 
-        // 放大时展示色号字符
-        if (scale >= 2.2 && isTarget) {
-          ctx.globalAlpha = 0.95
-          ctx.fillStyle = getContrastTextColor(cell.color.hex)
-          ctx.font = `bold ${Math.max(8, Math.floor(scale * 4.5))}px sans-serif`
+        // 开启色号展示且尺寸足够阅读时绘制色号文本
+        if (shouldShowColorCode(showColorCodes, scaledCell)) {
+          ctx.globalAlpha = isTarget ? 1.0 : (isLight ? 0.25 : 0.3)
+          const textColor = getContrastTextColor(cell.color.hex)
+          const fontSize = computeColorCodeFontSize(scaledCell)
+          ctx.fillStyle = textColor
+          ctx.font = `bold ${fontSize}px monospace`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
-          ctx.fillText(cell.color.code, centerX, centerY)
+          ctx.fillText(cell.color.code, cellLeft + scaledCell / 2, cellTop + scaledCell / 2)
         }
       }
     }
@@ -228,7 +229,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
         ctx.stroke()
       }
     }
-  }, [grid, selectedColorCode, baseCellSize, theme])
+  }, [grid, selectedColorCode, baseCellSize, theme, showColorCodes])
 
   const zoomAtPoint = useCallback((screenX: number, screenY: number, factor: number) => {
     const oldScale = viewportRef.current.scale
@@ -408,7 +409,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
 
   useEffect(() => {
     renderCanvas()
-  }, [selectedColorCode, theme, renderCanvas])
+  }, [selectedColorCode, theme, showColorCodes, renderCanvas])
 
   // 触摸手势
   const handleTouchStart = (e: any) => {
@@ -578,6 +579,13 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
           title="缩小"
         >
           -
+        </View>
+        <View
+          className={`zoom-btn code-toggle-btn ${showColorCodes ? 'active' : ''}`}
+          onClick={handleToggleColorCodes}
+          title={showColorCodes ? '隐藏色号' : '显示色号'}
+        >
+          #
         </View>
         <View
           className="zoom-btn reset-btn"

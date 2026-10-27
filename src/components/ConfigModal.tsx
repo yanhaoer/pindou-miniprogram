@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { View, Text, Input, Switch, Button } from '@tarojs/components'
+import { RootPortal, View, Text, Input, Switch, Button } from '@tarojs/components'
 import { getAllPalettes } from '@/palettes'
 import type { BeadBrand } from '@/palettes/types'
 import './ConfigModal.scss'
@@ -58,103 +58,105 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   }
 
   return (
-    <View className="modal-overlay" onClick={onClose}>
-      <View className="modal-content" onClick={e => e.stopPropagation()}>
-        <View className="modal-header">
-          <Text className="modal-title">拼豆生成参数设置</Text>
-          <View className="close-btn" onClick={onClose}>
-            ✕
-          </View>
-        </View>
-
-        <View className="modal-body">
-          {/* 品牌色卡选择 */}
-          <View className="form-section">
-            <Text className="section-label">品牌色卡</Text>
-            <View className="pill-group">
-              {palettes.map(p => (
-                <View
-                  key={p.id}
-                  className={`pill-btn ${currentBrand === p.id ? 'active' : ''}`}
-                  onClick={() => setCurrentBrand(p.id)}
-                >
-                  <Text className="pill-title">{p.name}</Text>
-                  <Text className="pill-desc">{p.colors.length} 色</Text>
-                </View>
-              ))}
+    <RootPortal enable>
+      <View className="modal-overlay" onClick={onClose}>
+        <View className="modal-content" onClick={e => e.stopPropagation()}>
+          <View className="modal-header">
+            <Text className="modal-title">拼豆生成参数设置</Text>
+            <View className="close-btn" onClick={onClose}>
+              ✕
             </View>
           </View>
 
-          {/* 底板尺寸规格 */}
-          <View className="form-section">
-            <Text className="section-label">底板尺寸规格 (宽 × 高)</Text>
-            <View className="board-presets">
-              {presets.map(preset => (
-                <View
-                  key={preset.label}
-                  className={`preset-btn ${
-                    boardWidth === preset.w && boardHeight === preset.h ? 'active' : ''
-                  }`}
-                  onClick={() => {
-                    setBoardWidth(preset.w)
-                    setBoardHeight(preset.h)
-                  }}
-                >
-                  <Text className="preset-name">{preset.label}</Text>
-                  <Text className="preset-sub">
-                    {preset.w}×{preset.h}
-                  </Text>
-                </View>
-              ))}
-            </View>
-
-            {/* 自定义输入 */}
-            <View className="custom-inputs">
-              <View className="input-wrap">
-                <Text className="input-prefix">宽:</Text>
-                <Input
-                  type="number"
-                  className="num-input"
-                  value={String(boardWidth)}
-                  onInput={e => setBoardWidth(Number(e.detail.value))}
-                />
-              </View>
-              <Text className="x-mark">×</Text>
-              <View className="input-wrap">
-                <Text className="input-prefix">高:</Text>
-                <Input
-                  type="number"
-                  className="num-input"
-                  value={String(boardHeight)}
-                  onInput={e => setBoardHeight(Number(e.detail.value))}
-                />
+          <View className="modal-body">
+            {/* 品牌色卡选择 */}
+            <View className="form-section">
+              <Text className="section-label">品牌色卡</Text>
+              <View className="pill-group">
+                {palettes.map(p => (
+                  <View
+                    key={p.id}
+                    className={`pill-btn ${currentBrand === p.id ? 'active' : ''}`}
+                    onClick={() => setCurrentBrand(p.id)}
+                  >
+                    <Text className="pill-title">{p.name}</Text>
+                    <Text className="pill-desc">{p.colors.length} 色</Text>
+                  </View>
+                ))}
               </View>
             </View>
-          </View>
 
-          {/* 算法抖动选项 */}
-          <View className="form-section inline-row">
-            <View className="row-info">
-              <Text className="section-label">误差扩散抖动 (Floyd-Steinberg)</Text>
-              <Text className="field-hint">渐变色更丰富（动漫风格建议关闭）</Text>
+            {/* 底板尺寸规格 */}
+            <View className="form-section">
+              <Text className="section-label">底板尺寸规格 (宽 × 高)</Text>
+              <View className="board-presets">
+                {presets.map(preset => (
+                  <View
+                    key={preset.label}
+                    className={`preset-btn ${
+                      boardWidth === preset.w && boardHeight === preset.h ? 'active' : ''
+                    }`}
+                    onClick={() => {
+                      setBoardWidth(preset.w)
+                      setBoardHeight(preset.h)
+                    }}
+                  >
+                    <Text className="preset-name">{preset.label}</Text>
+                    <Text className="preset-sub">
+                      {preset.w}×{preset.h}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* 自定义输入 */}
+              <View className="custom-inputs">
+                <View className="input-wrap">
+                  <Text className="input-prefix">宽:</Text>
+                  <Input
+                    type="number"
+                    className="num-input"
+                    value={String(boardWidth)}
+                    onInput={e => setBoardWidth(Number(e.detail.value))}
+                  />
+                </View>
+                <Text className="x-mark">×</Text>
+                <View className="input-wrap">
+                  <Text className="input-prefix">高:</Text>
+                  <Input
+                    type="number"
+                    className="num-input"
+                    value={String(boardHeight)}
+                    onInput={e => setBoardHeight(Number(e.detail.value))}
+                  />
+                </View>
+              </View>
             </View>
-            <Switch
-              checked={isDither}
-              color="#3b82f6"
-              onChange={e => setIsDither(e.detail.value)}
-            />
-          </View>
-        </View>
 
-        <View className="modal-footer">
-          <Button className="btn secondary" onClick={onClose}>
-            取消
-          </Button>
-          <Button className="btn primary" onClick={handleConfirm}>
-            重新生成图纸
-          </Button>
+            {/* 算法抖动选项 */}
+            <View className="form-section inline-row">
+              <View className="row-info">
+                <Text className="section-label">误差扩散抖动 (Floyd-Steinberg)</Text>
+                <Text className="field-hint">渐变色更丰富（动漫风格建议关闭）</Text>
+              </View>
+              <Switch
+                checked={isDither}
+                color="#3b82f6"
+                onChange={e => setIsDither(e.detail.value)}
+              />
+            </View>
+          </View>
+
+          <View className="modal-footer">
+            <Button className="btn secondary" onClick={onClose}>
+              取消
+            </Button>
+            <Button className="btn primary" onClick={handleConfirm}>
+              重新生成图纸
+            </Button>
+          </View>
         </View>
       </View>
-    </View>
+    </RootPortal>
   )
 }

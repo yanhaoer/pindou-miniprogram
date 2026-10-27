@@ -153,20 +153,49 @@ export default function HomePage() {
   }
 
   const handlePickImage = () => {
-    Taro.chooseImage({
-      count: 1,
-      sizeType: ['original', 'compressed'],
-      sourceType: ['album', 'camera'],
-      success: (res) => {
-        const tempPath = res.tempFilePaths[0]
-        if (tempPath) {
-          navigateToEditor(tempPath)
-        }
-      },
-      fail: (err) => {
-        console.log('User cancelled or error picking image', err)
+    const onChosen = (tempPath: string) => {
+      if (tempPath) {
+        navigateToEditor(tempPath)
       }
-    })
+    }
+
+    if (typeof (Taro as any).chooseMedia === 'function') {
+      ;(Taro as any).chooseMedia({
+        count: 1,
+        mediaType: ['image'],
+        sourceType: ['album', 'camera'],
+        success: (res: any) => {
+          const path = res.tempFiles?.[0]?.tempFilePath || res.tempFiles?.[0]?.path
+          if (path) {
+            onChosen(path)
+          } else {
+            fallbackChoose()
+          }
+        },
+        fail: () => {
+          fallbackChoose()
+        }
+      })
+    } else {
+      fallbackChoose()
+    }
+
+    function fallbackChoose() {
+      Taro.chooseImage({
+        count: 1,
+        sizeType: ['original', 'compressed'],
+        sourceType: ['album', 'camera'],
+        success: (res) => {
+          const tempPath = (res.tempFilePaths && res.tempFilePaths[0]) || (res.tempFiles && res.tempFiles[0] && ((res.tempFiles[0] as any).path || (res.tempFiles[0] as any).tempFilePath))
+          if (tempPath) {
+            onChosen(tempPath)
+          }
+        },
+        fail: (err) => {
+          console.log('User cancelled or error picking image', err)
+        }
+      })
+    }
   }
 
   const handlePreviewSample = () => {

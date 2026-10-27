@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { View, Text, Canvas } from '@tarojs/components'
-import Taro, { useRouter } from '@tarojs/taro'
+import { RootPortal, View, Text, Canvas, Image } from '@tarojs/components'
+import Taro, { useRouter, useLoad } from '@tarojs/taro'
 import { BeadCanvas, type BeadCanvasRef } from '@/components/BeadCanvas'
 import { ToolBar, type EditTool } from '@/components/ToolBar'
 import { ColorPaletteBar } from '@/components/ColorPaletteBar'
@@ -49,6 +49,7 @@ export default function IndexPage() {
 
   const [showConfigModal, setShowConfigModal] = useState(false)
   const [showSamplePicker, setShowSamplePicker] = useState(false)
+  const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null)
 
   const [grid, setGrid] = useState<BeadCell[][]>([])
   const [colorStats, setColorStats] = useState<Map<string, BeadColorStatItem>>(new Map())
@@ -141,6 +142,7 @@ export default function IndexPage() {
     rawImageHeightRef.current = imgData.height
     setBoardWidth(sample.width)
     setBoardHeight(sample.height)
+    setOriginalImageUrl(null)
     setShowSamplePicker(false)
     refreshQuantizedGrid(sample.width, sample.height, useDither, currentPalette)
   }, [refreshQuantizedGrid, useDither, currentPalette])
@@ -151,6 +153,7 @@ export default function IndexPage() {
     targetH?: number,
     targetPalette?: any
   ) => {
+    setOriginalImageUrl(imageSource)
     Taro.showLoading({ title: '解析图片中...' })
     const isWeApp = process.env.TARO_ENV === 'weapp'
 
@@ -251,119 +254,214 @@ export default function IndexPage() {
           }
 
           const realSrc = info.path || imageSource
+          let isProcessed = false
 
-          const runFallbackQueryCanvas = () => {
+          // 核心解码逻辑：使用实际 DOM 中已就绪的 2D Canvas 节点加载图像并读取像素
+          const runCanvasDecode = () => {
             let retry = 0
             const tryQuery = () => {
+              if (isProcessed) return
               const query = Taro.createSelectorQuery()
               query
                 .select('#exportCanvas')
                 .fields({ node: true, size: true })
                 .exec((res: any) => {
+                  if (isProcessed) return
                   if (!res || !res[0] || !res[0].node) {
-                    if (retry < 30) {
+                    if (retry < 25) {
                       retry++
-                      setTimeout(tryQuery, 60)
+                      setTimeout(tryQuery, 50)
                       return
                     }
-                    Taro.hideLoading()
-                    Taro.showToast({ title: '画布初始化中，请稍候重试', icon: 'none' })
+                    console.warn('#exportCanvas query timed out, trying offscreen fallback')
+                    tryOffscreenDecode()
                     return
                   }
+
                   const expCanvas = res[0].node
                   const expCtx = expCanvas.getContext('2d')
                   const img = expCanvas.createImage()
-                  img.onload = () => {
-                    expCanvas.width = w
-                    expCanvas.height = h
-                    expCtx.clearRect(0, 0, w, h)
-                    expCtx.drawImage(img, 0, 0, w, h)
-                    const imgData = expCtx.getImageData(0, 0, w, h)
-                    rawImagePixelsRef.current = imgData.data
-                    rawImageWidthRef.current = w
-                    rawImageHeightRef.current = h
-                    Taro.hideLoading()
-                    refreshQuantizedGrid(newW, newH, useDither, pal)
+                  let timer: any = null
+
+                  const handleSuccess = () => {
+                    if (isProcessed) return
+                    if (timer) clearTimeout(timer)
+                    try {
+                      expCanvas.width = w
+                      expCanvas.height = h
+                      expCtx.clearRect(0, 0, w, h)
+                      expCtx.drawImage(img, 0, 0, w, h)
+                      const imgData = expCtx.getImageData(0, 0, w, h)
+                      // 提取完像素数据立即清空底层画板，避免在屏幕上残留原图
+                      expCtx.clearRect(0, 0, w, h)
+
+                      // 校验像素数据：确保不是全透明空像素
+                      let hasValidPixel = false
+                      const step = Math.max(1, Math.floor(imgData.data.length / 500))
+                      for (let i = 3; i < imgData.data.length; i += step * 4) {
+                        if (imgData.data[i] > 10) {
+                          hasValidPixel = true
+                          break
+                        }
+                      }
+
+                      if (!hasValidPixel) {
+                        console.warn('expCanvas getImageData returned all transparent pixels, trying offscreen fallback')
+                        tryOffscreenDecode()
+                        return
+                      }
+
+                      isProcessed = true
+                      rawImagePixelsRef.current = imgData.data
+                      rawImageWidthRef.current = w
+                      rawImageHeightRef.current = h
+                      Taro.hideLoading()
+                      refreshQuantizedGrid(newW, newH, useDither, pal)
+                    } catch (e) {
+                      console.error('expCanvas drawImage/getImageData failed', e)
+                      tryOffscreenDecode()
+                    }
                   }
-                  img.onerror = () => {
-                    Taro.hideLoading()
-                    Taro.showToast({ title: '图片解码失败', icon: 'none' })
+
+                  const handleFail = () => {
+                    if (isProcessed) return
+                    if (timer) clearTimeout(timer)
+                    console.warn('expCanvas img load failed, trying offscreen')
+                    tryOffscreenDecode()
                   }
+
+                  img.onload = handleSuccess
+                  img.onerror = handleFail
+                  timer = setTimeout(handleFail, 3000)
                   img.src = realSrc
                 })
             }
             tryQuery()
           }
 
-          // 1. 尝试使用 wx.createOffscreenCanvas / Taro.createOffscreenCanvas
-          let offscreenCanvas: any = null
-          try {
-            if (typeof (wx as any) !== 'undefined' && typeof (wx as any).createOffscreenCanvas === 'function') {
-              offscreenCanvas = (wx as any).createOffscreenCanvas({ type: '2d', width: w, height: h })
-            } else if (typeof (Taro as any).createOffscreenCanvas === 'function') {
-              offscreenCanvas = (Taro as any).createOffscreenCanvas({ type: '2d', width: w, height: h })
-            }
-          } catch (e) {
-            console.warn('createOffscreenCanvas error', e)
-          }
-
-          if (offscreenCanvas) {
+          // 备选兜底：原生离屏 Canvas
+          const tryOffscreenDecode = () => {
+            if (isProcessed) return
+            let offscreenCanvas: any = null
             try {
-              const expCtx = offscreenCanvas.getContext('2d')
-              const img = offscreenCanvas.createImage()
-              img.onload = () => {
-                try {
-                  expCtx.clearRect(0, 0, w, h)
-                  expCtx.drawImage(img, 0, 0, w, h)
-                  const imgData = expCtx.getImageData(0, 0, w, h)
-                  rawImagePixelsRef.current = imgData.data
-                  rawImageWidthRef.current = w
-                  rawImageHeightRef.current = h
-                  Taro.hideLoading()
-                  refreshQuantizedGrid(newW, newH, useDither, pal)
-                } catch (drawErr) {
-                  console.error('Offscreen canvas process failed', drawErr)
-                  runFallbackQueryCanvas()
-                }
+              if (typeof (wx as any) !== 'undefined' && typeof (wx as any).createOffscreenCanvas === 'function') {
+                offscreenCanvas = (wx as any).createOffscreenCanvas({ type: '2d', width: w, height: h })
+              } else if (typeof (Taro as any).createOffscreenCanvas === 'function') {
+                offscreenCanvas = (Taro as any).createOffscreenCanvas({ type: '2d', width: w, height: h })
               }
-              img.onerror = (err: any) => {
-                console.error('Offscreen canvas image load error', err)
-                runFallbackQueryCanvas()
-              }
-              img.src = realSrc
-              return
-            } catch (canvasErr) {
-              console.warn('Offscreen canvas setup error', canvasErr)
+            } catch (e) {
+              console.warn('createOffscreenCanvas error', e)
             }
+
+            if (offscreenCanvas) {
+              try {
+                const expCtx = offscreenCanvas.getContext('2d')
+                const img = offscreenCanvas.createImage()
+                let timer: any = null
+
+                const onDone = () => {
+                  if (isProcessed) return
+                  isProcessed = true
+                  if (timer) clearTimeout(timer)
+                  try {
+                    expCtx.clearRect(0, 0, w, h)
+                    expCtx.drawImage(img, 0, 0, w, h)
+                    const imgData = expCtx.getImageData(0, 0, w, h)
+                    expCtx.clearRect(0, 0, w, h)
+                    rawImagePixelsRef.current = imgData.data
+                    rawImageWidthRef.current = w
+                    rawImageHeightRef.current = h
+                    Taro.hideLoading()
+                    refreshQuantizedGrid(newW, newH, useDither, pal)
+                  } catch (drawErr) {
+                    fallbackToSample('图片像素读取失败')
+                  }
+                }
+
+                const onError = () => {
+                  if (isProcessed) return
+                  if (timer) clearTimeout(timer)
+                  fallbackToSample('图片加载失败')
+                }
+
+                img.onload = onDone
+                img.onerror = onError
+                timer = setTimeout(onError, 2500)
+                img.src = realSrc
+                return
+              } catch (canvasErr) {
+                console.warn('Offscreen canvas setup error', canvasErr)
+              }
+            }
+
+            fallbackToSample('无法初始化画布环境')
           }
 
-          // 2. 备用兜底机制
-          runFallbackQueryCanvas()
+          const fallbackToSample = (msg: string) => {
+            if (isProcessed) return
+            isProcessed = true
+            Taro.hideLoading()
+            Taro.showToast({ title: `${msg}，已载入示例图`, icon: 'none', duration: 2500 })
+            loadSample(SAMPLES[0])
+          }
+
+          // 优先启动 DOM Canvas 解码
+          runCanvasDecode()
         },
         fail: (err) => {
           Taro.hideLoading()
-          Taro.showToast({ title: '获取图片信息失败', icon: 'none' })
+          Taro.showToast({ title: '获取图片信息失败，已载入示例图', icon: 'none' })
           console.error('getImageInfo fail', err)
+          loadSample(SAMPLES[0])
         }
       })
     }
-  }, [boardWidth, boardHeight, refreshQuantizedGrid, useDither, currentPalette])
+  }, [boardWidth, boardHeight, refreshQuantizedGrid, useDither, currentPalette, loadSample])
 
   const handlePickImage = useCallback(() => {
-    Taro.chooseImage({
-      count: 1,
-      sizeType: ['original', 'compressed'],
-      sourceType: ['album', 'camera'],
-      success: (res) => {
-        const tempPath = res.tempFilePaths[0]
-        if (tempPath) {
-          decodeImageToPixels(tempPath)
-        }
-      },
-      fail: (err) => {
-        console.log('User cancelled or failed to choose image', err)
+    const onChosen = (tempPath: string) => {
+      if (tempPath) {
+        decodeImageToPixels(tempPath)
       }
-    })
+    }
+
+    if (typeof (Taro as any).chooseMedia === 'function') {
+      ;(Taro as any).chooseMedia({
+        count: 1,
+        mediaType: ['image'],
+        sourceType: ['album', 'camera'],
+        success: (res: any) => {
+          const path = res.tempFiles?.[0]?.tempFilePath || res.tempFiles?.[0]?.path
+          if (path) {
+            onChosen(path)
+          } else {
+            fallbackChoose()
+          }
+        },
+        fail: () => {
+          fallbackChoose()
+        }
+      })
+    } else {
+      fallbackChoose()
+    }
+
+    function fallbackChoose() {
+      Taro.chooseImage({
+        count: 1,
+        sizeType: ['original', 'compressed'],
+        sourceType: ['album', 'camera'],
+        success: (res) => {
+          const tempPath = (res.tempFilePaths && res.tempFilePaths[0]) || (res.tempFiles && res.tempFiles[0] && ((res.tempFiles[0] as any).path || (res.tempFiles[0] as any).tempFilePath))
+          if (tempPath) {
+            onChosen(tempPath)
+          }
+        },
+        fail: (err) => {
+          console.log('User cancelled or failed to choose image', err)
+        }
+      })
+    }
   }, [decodeImageToPixels])
 
   const handleCellClick = useCallback(({ x, y, cell }: { x: number; y: number; cell: BeadCell }) => {
@@ -520,31 +618,70 @@ export default function IndexPage() {
     }
   }, [grid, colorStats, currentPalette])
 
-  // 挂载加载：根据路由参数初始化选图、尺寸与色系
+  const initFromParams = useCallback((params: Record<string, any>) => {
+    if (hasLoadedInitialSampleRef.current) return
+    if (!params) return
+    const { width, height, brand, imagePath } = params
+    if (!width && !height && !brand && !imagePath) return
+
+    hasLoadedInitialSampleRef.current = true
+    const targetW = Number(width) || boardWidth
+    const targetH = Number(height) || boardHeight
+    const targetBrand = (brand as BeadBrand) || currentBrand
+
+    if (width) setBoardWidth(targetW)
+    if (height) setBoardHeight(targetH)
+    if (brand) setCurrentBrand(targetBrand)
+
+    if (imagePath) {
+      let cleanPath = imagePath
+      try {
+        cleanPath = decodeURIComponent(imagePath)
+      } catch (e) {
+        cleanPath = imagePath
+      }
+      decodeImageToPixels(
+        cleanPath,
+        targetW,
+        targetH,
+        getPalette(targetBrand)
+      )
+    } else {
+      loadSample(SAMPLES[0])
+    }
+  }, [boardWidth, boardHeight, currentBrand, decodeImageToPixels, loadSample])
+
+  // 微信小程序原生生命周期 onLoad：优先从此处提取参数
+  useLoad((options: any) => {
+    initFromParams(options)
+  })
+
+  // 兼容 Taro 路由上下文 router.params 监听
   useEffect(() => {
-    if (!hasLoadedInitialSampleRef.current) {
-      hasLoadedInitialSampleRef.current = true
-      const { width, height, brand, imagePath } = router.params
-      const targetW = Number(width) || boardWidth
-      const targetH = Number(height) || boardHeight
-      const targetBrand = (brand as BeadBrand) || currentBrand
+    if (router.params && (router.params.imagePath || router.params.width)) {
+      initFromParams(router.params)
+    }
+  }, [router.params, initFromParams])
 
-      if (width) setBoardWidth(targetW)
-      if (height) setBoardHeight(targetH)
-      if (brand) setCurrentBrand(targetBrand)
-
-      if (imagePath) {
-        decodeImageToPixels(
-          decodeURIComponent(imagePath),
-          targetW,
-          targetH,
-          getPalette(targetBrand)
-        )
-      } else {
+  // 无参数直接进入时默认加载样图兜底
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!hasLoadedInitialSampleRef.current) {
+        hasLoadedInitialSampleRef.current = true
         loadSample(SAMPLES[0])
       }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [loadSample])
+
+  const handlePreviewOriginalImage = useCallback(() => {
+    if (originalImageUrl) {
+      Taro.previewImage({
+        current: originalImageUrl,
+        urls: [originalImageUrl]
+      })
     }
-  }, [router.params, decodeImageToPixels, loadSample, boardWidth, boardHeight, currentBrand])
+  }, [originalImageUrl])
 
   const handleBackHome = () => {
     Taro.navigateBack().catch(() => {
@@ -611,6 +748,20 @@ export default function IndexPage() {
           activeColor={activeColor}
           onCellClick={handleCellClick}
         />
+
+        {/* 左下角原图微型缩略图悬浮卡片 */}
+        {originalImageUrl && (
+          <View
+            className="original-image-preview"
+            onClick={handlePreviewOriginalImage}
+            title="点击查看原图大图"
+          >
+            <Image src={originalImageUrl} mode="aspectFill" className="preview-thumb-img" />
+            <View className="preview-thumb-badge">
+              <Text className="thumb-badge-text">原图</Text>
+            </View>
+          </View>
+        )}
       </View>
 
       {/* 底部色号清单与寻豆面板 */}
@@ -635,29 +786,31 @@ export default function IndexPage() {
 
       {/* 样图选择弹层 */}
       {showSamplePicker && (
-        <View className="picker-overlay" onClick={() => setShowSamplePicker(false)}>
-          <View className="picker-modal" onClick={e => e.stopPropagation()}>
-            <View className="picker-header">
-              <Text className="picker-title">选择内置经典像素样例</Text>
-              <View className="close-btn" onClick={() => setShowSamplePicker(false)}>
-                ✕
+        <RootPortal enable>
+          <View className="picker-overlay" onClick={() => setShowSamplePicker(false)}>
+            <View className="picker-modal" onClick={e => e.stopPropagation()}>
+              <View className="picker-header">
+                <Text className="picker-title">选择内置经典像素样例</Text>
+                <View className="close-btn" onClick={() => setShowSamplePicker(false)}>
+                  ✕
+                </View>
+              </View>
+              <View className="sample-grid">
+                {SAMPLES.map(sample => (
+                  <View
+                    key={sample.id}
+                    className="sample-card"
+                    onClick={() => loadSample(sample)}
+                  >
+                    <Text className="sample-icon">👾</Text>
+                    <Text className="sample-name">{sample.name}</Text>
+                    <Text className="sample-desc">{sample.description}</Text>
+                  </View>
+                ))}
               </View>
             </View>
-            <View className="sample-grid">
-              {SAMPLES.map(sample => (
-                <View
-                  key={sample.id}
-                  className="sample-card"
-                  onClick={() => loadSample(sample)}
-                >
-                  <Text className="sample-icon">👾</Text>
-                  <Text className="sample-name">{sample.name}</Text>
-                  <Text className="sample-desc">{sample.description}</Text>
-                </View>
-              ))}
-            </View>
           </View>
-        </View>
+        </RootPortal>
       )}
 
       {/* 离屏 Canvas */}
