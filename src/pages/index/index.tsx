@@ -73,7 +73,7 @@ export default function IndexPage() {
     setCanRedo(historyRef.current.canRedo)
   }, [])
 
-  // 动态同步小程序原生导航栏色彩
+  // 动态同步小程序原生导航栏色彩与标题
   useEffect(() => {
     if (process.env.TARO_ENV === 'weapp') {
       Taro.setNavigationBarColor({
@@ -81,8 +81,12 @@ export default function IndexPage() {
         backgroundColor: theme === 'dark' ? '#16171d' : '#ffffff',
         animation: { duration: 200, timingFunc: 'linear' }
       }).catch(() => {})
+
+      Taro.setNavigationBarTitle({
+        title: `拼豆生成器 (${boardWidth}×${boardHeight})`
+      }).catch(() => {})
     }
-  }, [theme])
+  }, [theme, boardWidth, boardHeight])
 
   const toggleTheme = useCallback(() => {
     setTheme(prev => {
@@ -691,41 +695,6 @@ export default function IndexPage() {
 
   return (
     <View className={`app-container theme-${theme}`}>
-      {/* 顶部状态与主操作栏 */}
-      <View className="top-nav">
-        <View className="brand-title">
-          <View className="back-home-btn" onClick={handleBackHome} title="返回首页">
-            <Text className="back-arrow">◀</Text>
-            <Text className="back-text">首页</Text>
-          </View>
-          <View className="title-meta">
-            <Text className="main-title">小呱拼豆</Text>
-            <Text className="sub-title">
-              {currentPalette.name} · {boardWidth}×{boardHeight}
-            </Text>
-          </View>
-        </View>
-
-        <View className="nav-actions">
-          <View
-            className="theme-toggle-btn"
-            onClick={toggleTheme}
-            title={theme === 'dark' ? '切换为明亮模式' : '切换为暗夜模式'}
-          >
-            <Text className="theme-icon">{theme === 'dark' ? '🌙' : '☀️'}</Text>
-          </View>
-          <View className="nav-btn secondary" onClick={() => setShowSamplePicker(true)}>
-            <Text>样例</Text>
-          </View>
-          <View className="nav-btn secondary" onClick={handlePickImage}>
-            <Text>选图</Text>
-          </View>
-          <View className="nav-btn primary" onClick={handleExportSheet}>
-            <Text>导出图纸</Text>
-          </View>
-        </View>
-      </View>
-
       {/* 微调工具栏 */}
       <ToolBar
         currentTool={currentTool}
@@ -735,6 +704,7 @@ export default function IndexPage() {
         onUndo={handleUndo}
         onRedo={handleRedo}
         onOpenConfig={() => setShowConfigModal(true)}
+        onExport={handleExportSheet}
       />
 
       {/* 中间主视图画布 */}
@@ -782,6 +752,8 @@ export default function IndexPage() {
         dither={useDither}
         onClose={() => setShowConfigModal(false)}
         onApply={handleApplyConfig}
+        onPickImage={handlePickImage}
+        onSelectSample={() => setShowSamplePicker(true)}
       />
 
       {/* 样图选择弹层 */}

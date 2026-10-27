@@ -6,7 +6,7 @@ import React, {
   useEffect,
   useCallback
 } from 'react'
-import { View, Canvas } from '@tarojs/components'
+import { View, Canvas, Text } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import type { BeadCell } from '@/utils/quantizer'
 import type { BeadColor } from '@/palettes/types'
@@ -198,7 +198,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
           const textColor = getContrastTextColor(cell.color.hex)
           const fontSize = computeColorCodeFontSize(scaledCell)
           ctx.fillStyle = textColor
-          ctx.font = `bold ${fontSize}px monospace`
+          ctx.font = `bold ${fontSize}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText(cell.color.code, cellLeft + scaledCell / 2, cellTop + scaledCell / 2)
@@ -564,6 +564,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
         onWheel={handleWheel}
       />
 
+      {/* 缩放与居中控制浮标 */}
       <View className="zoom-controls">
         <View
           className="zoom-btn"
@@ -581,13 +582,6 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
           -
         </View>
         <View
-          className={`zoom-btn code-toggle-btn ${showColorCodes ? 'active' : ''}`}
-          onClick={handleToggleColorCodes}
-          title={showColorCodes ? '隐藏色号' : '显示色号'}
-        >
-          #
-        </View>
-        <View
           className="zoom-btn reset-btn"
           onClick={() => {
             centerAndFitBoard()
@@ -597,6 +591,16 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
         >
           居中
         </View>
+      </View>
+
+      {/* 右下角显色号开关按钮 */}
+      <View
+        className={`color-code-toggle-badge ${showColorCodes ? 'active' : ''}`}
+        onClick={handleToggleColorCodes}
+        title={showColorCodes ? '隐藏色号' : '显示色号'}
+      >
+        <Text className="toggle-icon">#</Text>
+        <Text className="toggle-text">{showColorCodes ? '隐藏色号' : '显示色号'}</Text>
       </View>
     </View>
   )

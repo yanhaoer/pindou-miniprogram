@@ -105,11 +105,9 @@ export const ColorPaletteBar: React.FC<ColorPaletteBarProps> = ({
               >
                 <View className="bead-swatch-box">
                   <View
-                    className="bead-circle"
+                    className="bead-block"
                     style={{ backgroundColor: item.color.hex }}
-                  >
-                    <View className="bead-hole" />
-                  </View>
+                  />
                 </View>
 
                 <View className="color-meta">

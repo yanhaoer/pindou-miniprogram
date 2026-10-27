@@ -204,6 +204,41 @@
   }
 }
 
+.source-action-row {
+  display: flex;
+  gap: 10px;
+}
+
+.source-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:active {
+    transform: scale(0.96);
+    background: rgba(59, 130, 246, 0.2);
+    border-color: #3b82f6;
+  }
+
+  .btn-icon {
+    font-size: 15px;
+  }
+
+  .btn-text {
+    font-size: 12px;
+    font-weight: 600;
+    color: #f1f2f6;
+  }
+}
+
 /* 明亮模式适配 */
 .theme-light .modal-content {
   background: #ffffff;

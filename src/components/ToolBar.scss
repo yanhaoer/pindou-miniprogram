@@ -72,6 +72,16 @@
     background: rgba(59, 130, 246, 0.2);
     border: 1px solid rgba(59, 130, 246, 0.4);
   }
+
+  &.export-btn {
+    background: rgba(56, 189, 248, 0.15);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+
+    &:active {
+      background: rgba(56, 189, 248, 0.3);
+      transform: scale(0.95);
+    }
+  }
 }
 
 .action-icon {

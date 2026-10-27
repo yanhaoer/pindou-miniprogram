@@ -12,6 +12,7 @@ export interface ToolBarProps {
   onUndo: () => void
   onRedo: () => void
   onOpenConfig: () => void
+  onExport?: () => void
 }
 
 export const ToolBar: React.FC<ToolBarProps> = ({
@@ -21,7 +22,8 @@ export const ToolBar: React.FC<ToolBarProps> = ({
   onSelectTool,
   onUndo,
   onRedo,
-  onOpenConfig
+  onOpenConfig,
+  onExport
 }) => {
   return (
     <View className="toolbar-wrapper">
@@ -81,9 +83,14 @@ export const ToolBar: React.FC<ToolBarProps> = ({
           <Text className="action-icon">↪️</Text>
         </View>
         <View className="divider" />
-        <View className="action-btn primary" onClick={onOpenConfig}>
+        <View className="action-btn" onClick={onOpenConfig} title="参数设置">
           <Text className="action-icon">⚙️</Text>
         </View>
+        {onExport && (
+          <View className="action-btn export-btn" onClick={onExport} title="导出图纸">
+            <Text className="action-icon">📥</Text>
+          </View>
+        )}
       </View>
     </View>
   )

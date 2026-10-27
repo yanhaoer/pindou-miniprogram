@@ -12,6 +12,8 @@ export interface ConfigModalProps {
   dither: boolean
   onClose: () => void
   onApply: (payload: { brand: BeadBrand; width: number; height: number; dither: boolean }) => void
+  onPickImage?: () => void
+  onSelectSample?: () => void
 }
 
 const presets = [
@@ -28,7 +30,9 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   height,
   dither,
   onClose,
-  onApply
+  onApply,
+  onPickImage,
+  onSelectSample
 }) => {
   const palettes = getAllPalettes()
   const [currentBrand, setCurrentBrand] = useState<BeadBrand>(brand)
@@ -145,6 +149,39 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                 onChange={e => setIsDither(e.detail.value)}
               />
             </View>
+
+            {/* 图像源切换 */}
+            {(onPickImage || onSelectSample) && (
+              <View className="form-section">
+                <Text className="section-label">图像来源操作</Text>
+                <View className="source-action-row">
+                  {onPickImage && (
+                    <View
+                      className="source-btn"
+                      onClick={() => {
+                        onClose()
+                        onPickImage()
+                      }}
+                    >
+                      <Text className="btn-icon">🖼️</Text>
+                      <Text className="btn-text">重新选图</Text>
+                    </View>
+                  )}
+                  {onSelectSample && (
+                    <View
+                      className="source-btn"
+                      onClick={() => {
+                        onClose()
+                        onSelectSample()
+                      }}
+                    >
+                      <Text className="btn-icon">👾</Text>
+                      <Text className="btn-text">选择样例</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
           </View>
 
           <View className="modal-footer">

@@ -96,14 +96,14 @@ export function getContrastTextColor(hex: string): string {
 /**
  * Determine whether color code text should be displayed based on toggle state and cell size
  */
-export function shouldShowColorCode(showCodes: boolean, scaledCell: number, threshold = 14): boolean {
+export function shouldShowColorCode(showCodes: boolean, scaledCell: number, threshold = 7): boolean {
   return showCodes && scaledCell >= threshold
 }
 
 /**
  * Compute optimal font size for color code inside a grid cell
  */
-export function computeColorCodeFontSize(scaledCell: number, min = 8, max = 16): number {
-  return Math.min(Math.max(min, Math.floor(scaledCell * 0.42)), max)
+export function computeColorCodeFontSize(scaledCell: number, min = 7, max = 15): number {
+  return Math.min(Math.max(min, Math.floor(scaledCell * 0.44)), max)
 }
 
