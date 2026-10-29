@@ -6,7 +6,7 @@ import React, {
   useEffect,
   useCallback
 } from 'react'
-import { View, Canvas, Text } from '@tarojs/components'
+import { View, Canvas, Text, Image } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import type { BeadCell } from '@/utils/quantizer'
 import type { BeadColor } from '@/palettes/types'
@@ -15,6 +15,8 @@ import {
   screenToGrid,
   calculateTouchDistance,
   calculateTouchCenter,
+  clampViewportBounds,
+  getCanvasRelativeCoords,
   type Viewport
 } from '@/utils/gesture'
 import {
@@ -22,6 +24,11 @@ import {
   shouldShowColorCode,
   computeColorCodeFontSize
 } from '@/utils/color-space'
+import {
+  getRulerBandSize,
+  shouldShowRulerTickNumber,
+  computeRulerFontSize
+} from '@/utils/ruler'
 import './BeadCanvas.scss'
 
 export { getContrastTextColor } from '@/utils/color-space'
@@ -29,6 +36,7 @@ export { getContrastTextColor } from '@/utils/color-space'
 export interface BeadCanvasRef {
   render: () => void
   resetView: () => void
+  getSnapshot?: () => string | null
 }
 
 export interface BeadCanvasProps {
@@ -39,6 +47,8 @@ export interface BeadCanvasProps {
   baseCellSize?: number
   theme?: 'dark' | 'light'
   showColorCodes?: boolean
+  showRulers?: boolean
+  isOverlayActive?: boolean
   onToggleColorCodes?: (show: boolean) => void
   onCellClick?: (payload: { x: number; y: number; cell: BeadCell }) => void
   onPickColor?: (color: BeadColor) => void
@@ -51,6 +61,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     tool = 'view',
     baseCellSize = 22,
     theme = 'dark',
+    showRulers = false,
     onCellClick,
     onPickColor
   } = props
@@ -60,6 +71,35 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
   const canvasWidthRef = useRef(360)
   const canvasHeightRef = useRef(480)
   const dprRef = useRef(1)
+  const canvasRectRef = useRef({ left: 0, top: 0, width: 360, height: 480 })
+
+  const updateCanvasRect = useCallback(() => {
+    const isWeApp = process.env.TARO_ENV === 'weapp'
+    if (isWeApp) {
+      const query = Taro.createSelectorQuery()
+      query.select('#beadCanvas').boundingClientRect((rect: any) => {
+        if (rect) {
+          canvasRectRef.current = {
+            left: rect.left || 0,
+            top: rect.top || 0,
+            width: rect.width || 360,
+            height: rect.height || 480
+          }
+        }
+      }).exec()
+    } else {
+      const node = canvasNodeRef.current
+      if (node && typeof node.getBoundingClientRect === 'function') {
+        const rect = node.getBoundingClientRect()
+        canvasRectRef.current = {
+          left: rect.left || 0,
+          top: rect.top || 0,
+          width: rect.width || 360,
+          height: rect.height || 480
+        }
+      }
+    }
+  }, [])
 
   const [scaleDisplay, setScaleDisplay] = useState(100)
   const [isDragging, setIsDragging] = useState(false)
@@ -94,6 +134,28 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
   // 记录上一次的网格尺寸，避免每次单点笔触刷新时强制打断用户的平移缩放
   const lastGridDimRef = useRef({ w: 0, h: 0 })
 
+  const getFitScale = useCallback(() => {
+    if (!grid || grid.length === 0) return 1.0
+    const gridH = grid.length
+    const gridW = grid[0].length
+
+    const boardW = gridW * baseCellSize
+    const boardH = gridH * baseCellSize
+
+    const w = canvasWidthRef.current || 360
+    const h = canvasHeightRef.current || 480
+
+    const rulerPadding = showRulers ? 20 : 0
+    const paddingX = Math.min(32, w * 0.08) + rulerPadding
+    const paddingY = Math.min(32, h * 0.08) + rulerPadding
+    const availW = Math.max(80, w - paddingX * 2)
+    const availH = Math.max(80, h - paddingY * 2)
+
+    const scaleX = availW / boardW
+    const scaleY = availH / boardH
+    return clampScale(Math.min(scaleX, scaleY, 2.0), 0.2, 5.0)
+  }, [grid, baseCellSize, showRulers])
+
   const centerAndFitBoard = useCallback(() => {
     if (!grid || grid.length === 0) return
     const gridH = grid.length
@@ -105,21 +167,14 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     const w = canvasWidthRef.current || 360
     const h = canvasHeightRef.current || 480
 
-    const paddingX = Math.min(32, w * 0.08)
-    const paddingY = Math.min(32, h * 0.08)
-    const availW = Math.max(80, w - paddingX * 2)
-    const availH = Math.max(80, h - paddingY * 2)
-
-    const scaleX = availW / boardW
-    const scaleY = availH / boardH
-    const initialScale = clampScale(Math.min(scaleX, scaleY, 2.0), 0.4, 5.0)
+    const initialScale = getFitScale()
 
     viewportRef.current.scale = initialScale
     // 精确将底板中点与画布中点重合 (Math.round 避免亚像素模糊)
     viewportRef.current.offsetX = Math.round((w - boardW * initialScale) / 2)
     viewportRef.current.offsetY = Math.round((h - boardH * initialScale) / 2)
     setScaleDisplay(Math.round(initialScale * 100))
-  }, [grid, baseCellSize])
+  }, [grid, baseCellSize, getFitScale])
 
   const renderCanvas = useCallback(() => {
     const ctx = ctxRef.current
@@ -229,31 +284,143 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
         ctx.stroke()
       }
     }
-  }, [grid, selectedColorCode, baseCellSize, theme, showColorCodes])
+    // 5. 绘制四周坐标刻度标尺 (当 showRulers 开启时)
+    const rulerBand = getRulerBandSize(scaledCell, showRulers)
+    if (showRulers && rulerBand > 0) {
+      const rulerBg = isLight ? '#f1f5f9' : '#181920'
+      const rulerBorder = isLight ? '#cbd5e1' : 'rgba(255, 255, 255, 0.12)'
+      const rulerText = isLight ? '#64748b' : '#94a3b8'
+      const rulerHighlightText = isLight ? '#0284c7' : '#38bdf8'
+      const rulerTickColor = isLight ? '#94a3b8' : 'rgba(255, 255, 255, 0.2)'
+      const fontSize = computeRulerFontSize(scaledCell)
+
+      // 标尺带背景（顶部、底部、左侧、右侧及四角）
+      ctx.fillStyle = rulerBg
+      ctx.fillRect(offsetX - rulerBand, offsetY - rulerBand, boardW + rulerBand * 2, rulerBand)
+      ctx.fillRect(offsetX - rulerBand, offsetY + boardH, boardW + rulerBand * 2, rulerBand)
+      ctx.fillRect(offsetX - rulerBand, offsetY, rulerBand, boardH)
+      ctx.fillRect(offsetX + boardW, offsetY, rulerBand, boardH)
+
+      // 标尺带内外边框
+      ctx.strokeStyle = rulerBorder
+      ctx.lineWidth = 0.5
+      ctx.strokeRect(offsetX - rulerBand, offsetY - rulerBand, boardW + rulerBand * 2, boardH + rulerBand * 2)
+      ctx.strokeRect(offsetX, offsetY, boardW, boardH)
+
+      ctx.font = `600 ${fontSize}px monospace`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+
+      // 绘制列标尺 (顶部与底部)
+      for (let x = 0; x < gridW; x++) {
+        const colCenter = offsetX + x * scaledCell + scaledCell / 2
+        if (colCenter + scaledCell < 0 || colCenter - scaledCell > width) continue
+
+        const isTickSpecial = (x + 1) % 5 === 0 || x === 0 || x === gridW - 1
+        const showText = shouldShowRulerTickNumber(x, gridW, scaledCell)
+
+        if (showText) {
+          ctx.fillStyle = isTickSpecial ? rulerHighlightText : rulerText
+          ctx.fillText(String(x + 1), colCenter, offsetY - rulerBand / 2)
+          ctx.fillText(String(x + 1), colCenter, offsetY + boardH + rulerBand / 2)
+        }
+
+        // 短刻度线
+        ctx.strokeStyle = rulerTickColor
+        ctx.lineWidth = isTickSpecial ? 1.0 : 0.5
+        const tickLen = isTickSpecial ? 4 : 2
+        // 顶部刻度
+        ctx.beginPath()
+        ctx.moveTo(offsetX + (x + 1) * scaledCell, offsetY - tickLen)
+        ctx.lineTo(offsetX + (x + 1) * scaledCell, offsetY)
+        ctx.stroke()
+        // 底部刻度
+        ctx.beginPath()
+        ctx.moveTo(offsetX + (x + 1) * scaledCell, offsetY + boardH)
+        ctx.lineTo(offsetX + (x + 1) * scaledCell, offsetY + boardH + tickLen)
+        ctx.stroke()
+      }
+
+      // 绘制行标尺 (左侧与右侧)
+      for (let y = 0; y < gridH; y++) {
+        const rowCenter = offsetY + y * scaledCell + scaledCell / 2
+        if (rowCenter + scaledCell < 0 || rowCenter - scaledCell > height) continue
+
+        const isTickSpecial = (y + 1) % 5 === 0 || y === 0 || y === gridH - 1
+        const showText = shouldShowRulerTickNumber(y, gridH, scaledCell)
+
+        if (showText) {
+          ctx.fillStyle = isTickSpecial ? rulerHighlightText : rulerText
+          ctx.fillText(String(y + 1), offsetX - rulerBand / 2, rowCenter)
+          ctx.fillText(String(y + 1), offsetX + boardW + rulerBand / 2, rowCenter)
+        }
+
+        // 短刻度线
+        ctx.strokeStyle = rulerTickColor
+        ctx.lineWidth = isTickSpecial ? 1.0 : 0.5
+        const tickLen = isTickSpecial ? 4 : 2
+        // 左侧刻度
+        ctx.beginPath()
+        ctx.moveTo(offsetX - tickLen, offsetY + (y + 1) * scaledCell)
+        ctx.lineTo(offsetX, offsetY + (y + 1) * scaledCell)
+        ctx.stroke()
+        // 右侧刻度
+        ctx.beginPath()
+        ctx.moveTo(offsetX + boardW, offsetY + (y + 1) * scaledCell)
+        ctx.lineTo(offsetX + boardW + tickLen, offsetY + (y + 1) * scaledCell)
+        ctx.stroke()
+      }
+    }
+  }, [grid, selectedColorCode, baseCellSize, theme, showColorCodes, showRulers])
 
   const zoomAtPoint = useCallback((screenX: number, screenY: number, factor: number) => {
+    if (!grid || grid.length === 0) return
+    const gridH = grid.length
+    const gridW = grid[0].length
+    const boardW = gridW * baseCellSize
+    const boardH = gridH * baseCellSize
+    const w = canvasWidthRef.current || 360
+    const h = canvasHeightRef.current || 480
+
+    const fitScale = getFitScale()
     const oldScale = viewportRef.current.scale
-    const newScale = clampScale(oldScale * factor, 0.5, 10.0)
+    // 最小缩放限制为自适应视口比例，避免无限缩小
+    const newScale = clampScale(oldScale * factor, fitScale, 8.0)
     if (newScale === oldScale) return
 
     const ratio = newScale / oldScale
-    viewportRef.current.offsetX = screenX - (screenX - viewportRef.current.offsetX) * ratio
-    viewportRef.current.offsetY = screenY - (screenY - viewportRef.current.offsetY) * ratio
-    viewportRef.current.scale = newScale
-    setScaleDisplay(Math.round(newScale * 100))
-    renderCanvas()
-  }, [renderCanvas])
+    const rawOffsetX = screenX - (screenX - viewportRef.current.offsetX) * ratio
+    const rawOffsetY = screenY - (screenY - viewportRef.current.offsetY) * ratio
 
-  const handleCellTap = useCallback((clientX: number, clientY: number) => {
-    if (!canvasNodeRef.current || !grid || grid.length === 0) return
-    const canvasEl = canvasNodeRef.current
-    const rect = canvasEl.getBoundingClientRect ? canvasEl.getBoundingClientRect() : { left: 0, top: 0 }
-    const canvasX = clientX - rect.left
-    const canvasY = clientY - rect.top
+    const scaledCell = baseCellSize * newScale
+    const rulerBand = getRulerBandSize(scaledCell, showRulers)
+    const availW = Math.max(80, w - rulerBand * 2)
+    const availH = Math.max(80, h - rulerBand * 2)
+
+    const clamped = clampViewportBounds(
+      { scale: newScale, offsetX: rawOffsetX - rulerBand, offsetY: rawOffsetY - rulerBand },
+      availW,
+      availH,
+      boardW,
+      boardH
+    )
+
+    viewportRef.current = {
+      scale: newScale,
+      offsetX: clamped.offsetX + rulerBand,
+      offsetY: clamped.offsetY + rulerBand
+    }
+    setScaleDisplay(Math.round(clamped.scale * 100))
+    renderCanvas()
+  }, [grid, baseCellSize, showRulers, getFitScale, renderCanvas])
+
+  const handleCellTap = useCallback((touchOrEvent: any) => {
+    if (!grid || grid.length === 0) return
+    const rel = getCanvasRelativeCoords(touchOrEvent, canvasRectRef.current)
 
     const pos = screenToGrid(
-      canvasX,
-      canvasY,
+      rel.x,
+      rel.y,
       viewportRef.current,
       baseCellSize,
       grid[0].length,
@@ -266,13 +433,46 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     }
   }, [grid, baseCellSize, onCellClick])
 
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null)
+
+  const captureSnapshot = useCallback(() => {
+    try {
+      const node = canvasNodeRef.current
+      if (node && typeof node.toDataURL === 'function') {
+        const url = node.toDataURL('image/png')
+        if (url) {
+          setSnapshotUrl(url)
+          return url
+        }
+      }
+    } catch (err) {
+      console.warn('Canvas snapshot capture failed', err)
+    }
+    return null
+  }, [])
+
   useImperativeHandle(ref, () => ({
     render: renderCanvas,
     resetView: () => {
       centerAndFitBoard()
       renderCanvas()
+    },
+    getSnapshot: captureSnapshot
+  }), [renderCanvas, centerAndFitBoard, captureSnapshot])
+
+  useEffect(() => {
+    if (props.isOverlayActive) {
+      if (!snapshotUrl) {
+        captureSnapshot()
+      }
+    } else {
+      setSnapshotUrl(null)
+      const timer = setTimeout(() => {
+        renderCanvas()
+      }, 30)
+      return () => clearTimeout(timer)
     }
-  }), [renderCanvas, centerAndFitBoard])
+  }, [props.isOverlayActive, snapshotUrl, captureSnapshot, renderCanvas])
 
   // 初始化 Canvas
   useEffect(() => {
@@ -314,6 +514,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
             node.height = h * dpr
             ctx.scale(dpr, dpr)
 
+            updateCanvasRect()
             centerAndFitBoard()
             renderCanvas()
           })
@@ -359,6 +560,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
         ctx?.setTransform(1, 0, 0, 1, 0, 0)
         ctx?.scale(dpr, dpr)
 
+        updateCanvasRect()
         centerAndFitBoard()
         renderCanvas()
         return true
@@ -409,10 +611,36 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
 
   useEffect(() => {
     renderCanvas()
-  }, [selectedColorCode, theme, showColorCodes, renderCanvas])
+  }, [selectedColorCode, theme, showColorCodes, showRulers, renderCanvas])
+
+  const applyClampedDragOffset = useCallback((rawX: number, rawY: number) => {
+    if (grid && grid.length > 0) {
+      const scale = viewportRef.current.scale
+      const scaledCell = baseCellSize * scale
+      const rulerBand = getRulerBandSize(scaledCell, showRulers)
+      const boardW = grid[0].length * baseCellSize
+      const boardH = grid.length * baseCellSize
+      const availW = Math.max(80, canvasWidthRef.current - rulerBand * 2)
+      const availH = Math.max(80, canvasHeightRef.current - rulerBand * 2)
+      const clamped = clampViewportBounds(
+        { scale, offsetX: rawX - rulerBand, offsetY: rawY - rulerBand },
+        availW,
+        availH,
+        boardW,
+        boardH
+      )
+      viewportRef.current.offsetX = clamped.offsetX + rulerBand
+      viewportRef.current.offsetY = clamped.offsetY + rulerBand
+    } else {
+      viewportRef.current.offsetX = rawX
+      viewportRef.current.offsetY = rawY
+    }
+  }, [grid, baseCellSize, showRulers])
 
   // 触摸手势
   const handleTouchStart = (e: any) => {
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation()
+    updateCanvasRect()
     const touches = e.touches
     if (touches.length === 1) {
       touchStateRef.current.isDragging = true
@@ -431,6 +659,8 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
   }
 
   const handleTouchMove = (e: any) => {
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation()
+    if (e && typeof e.preventDefault === 'function') e.preventDefault()
     const touches = e.touches
     if (touches.length === 1 && touchStateRef.current.isDragging) {
       const dx = touches[0].clientX - touchStateRef.current.dragStartScreen.x
@@ -438,8 +668,10 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
       if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
         touchStateRef.current.hasMovedSignificantly = true
       }
-      viewportRef.current.offsetX = touchStateRef.current.dragStartOffset.offsetX + dx
-      viewportRef.current.offsetY = touchStateRef.current.dragStartOffset.offsetY + dy
+      applyClampedDragOffset(
+        touchStateRef.current.dragStartOffset.offsetX + dx,
+        touchStateRef.current.dragStartOffset.offsetY + dy
+      )
       renderCanvas()
     } else if (touches.length >= 2) {
       const dist = calculateTouchDistance(touches[0], touches[1])
@@ -453,13 +685,14 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
   }
 
   const handleTouchEnd = (e: any) => {
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation()
     if (
       touchStateRef.current.isDragging &&
       !touchStateRef.current.hasMovedSignificantly &&
       e.changedTouches &&
       e.changedTouches.length === 1
     ) {
-      handleCellTap(e.changedTouches[0].clientX, e.changedTouches[0].clientY)
+      handleCellTap(e.changedTouches[0])
     }
     touchStateRef.current.isDragging = false
     touchStateRef.current.lastTouchDist = 0
@@ -468,6 +701,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
 
   // 鼠标操作（Web / H5 调试）
   const handleMouseDown = (e: any) => {
+    updateCanvasRect()
     if (e.button !== undefined && e.button !== 0) return
     if (e && typeof e.preventDefault === 'function') e.preventDefault()
     touchStateRef.current.isDragging = true
@@ -487,14 +721,16 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
       touchStateRef.current.hasMovedSignificantly = true
     }
-    viewportRef.current.offsetX = touchStateRef.current.dragStartOffset.offsetX + dx
-    viewportRef.current.offsetY = touchStateRef.current.dragStartOffset.offsetY + dy
+    applyClampedDragOffset(
+      touchStateRef.current.dragStartOffset.offsetX + dx,
+      touchStateRef.current.dragStartOffset.offsetY + dy
+    )
     renderCanvas()
   }
 
   const handleMouseUp = (e: any) => {
     if (touchStateRef.current.isDragging && !touchStateRef.current.hasMovedSignificantly) {
-      handleCellTap(e.clientX, e.clientY)
+      handleCellTap({ clientX: e.clientX, clientY: e.clientY })
     }
     touchStateRef.current.isDragging = false
     setIsDragging(false)
@@ -511,8 +747,10 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
         touchStateRef.current.hasMovedSignificantly = true
       }
-      viewportRef.current.offsetX = touchStateRef.current.dragStartOffset.offsetX + dx
-      viewportRef.current.offsetY = touchStateRef.current.dragStartOffset.offsetY + dy
+      applyClampedDragOffset(
+        touchStateRef.current.dragStartOffset.offsetX + dx,
+        touchStateRef.current.dragStartOffset.offsetY + dy
+      )
       renderCanvas()
     }
 
@@ -532,7 +770,7 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
       window.removeEventListener('mousemove', onGlobalMouseMove)
       window.removeEventListener('mouseup', onGlobalMouseUp)
     }
-  }, [renderCanvas, handleCellTap])
+  }, [renderCanvas, handleCellTap, applyClampedDragOffset])
 
   const handleWheel = (e: any) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault()
@@ -548,12 +786,25 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     <View
       className={`canvas-container tool-${tool} theme-${theme} ${isDragging ? 'is-dragging' : ''}`}
       id="canvasContainer"
+      catchMove={true}
     >
+      {/* 当弹窗打开时，展示纯静态 Image 替代原生 Canvas，彻底避免原生 Canvas 2D 在微信各机型上的同层/非同层穿透遮挡 */}
+      {props.isOverlayActive && snapshotUrl && (
+        <Image
+          src={snapshotUrl}
+          className="bead-canvas-snapshot"
+          mode="scaleToFill"
+        />
+      )}
+
       <Canvas
         id="beadCanvas"
         canvasId="beadCanvas"
         type="2d"
         className="bead-canvas"
+        disableScroll={true}
+        catchMove={true}
+        style={props.isOverlayActive ? { display: 'none', visibility: 'hidden', opacity: 0 } : undefined}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -563,45 +814,6 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
         onMouseUp={handleMouseUp}
         onWheel={handleWheel}
       />
-
-      {/* 缩放与居中控制浮标 */}
-      <View className="zoom-controls">
-        <View
-          className="zoom-btn"
-          onClick={() => zoomAtPoint(canvasWidthRef.current / 2, canvasHeightRef.current / 2, 1.25)}
-          title="放大"
-        >
-          +
-        </View>
-        <View className="zoom-text">{scaleDisplay}%</View>
-        <View
-          className="zoom-btn"
-          onClick={() => zoomAtPoint(canvasWidthRef.current / 2, canvasHeightRef.current / 2, 0.8)}
-          title="缩小"
-        >
-          -
-        </View>
-        <View
-          className="zoom-btn reset-btn"
-          onClick={() => {
-            centerAndFitBoard()
-            renderCanvas()
-          }}
-          title="始终居中对齐"
-        >
-          居中
-        </View>
-      </View>
-
-      {/* 右下角显色号开关按钮 */}
-      <View
-        className={`color-code-toggle-badge ${showColorCodes ? 'active' : ''}`}
-        onClick={handleToggleColorCodes}
-        title={showColorCodes ? '隐藏色号' : '显示色号'}
-      >
-        <Text className="toggle-icon">#</Text>
-        <Text className="toggle-text">{showColorCodes ? '隐藏色号' : '显示色号'}</Text>
-      </View>
     </View>
   )
 })

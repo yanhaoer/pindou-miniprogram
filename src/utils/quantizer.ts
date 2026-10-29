@@ -192,3 +192,40 @@ export function getBeadColorStats(grid: BeadCell[][]): Map<string, BeadColorStat
 
   return stats
 }
+
+/**
+ * Mirror bead grid horizontally (flip columns along Y-axis)
+ */
+export function mirrorGridHorizontal(grid: BeadCell[][]): BeadCell[][] {
+  if (!grid || grid.length === 0) return []
+  return grid.map(row => {
+    const reversed = [...row].reverse()
+    return reversed.map((cell, newX) => ({
+      ...cell,
+      x: newX
+    }))
+  })
+}
+
+/**
+ * Mirror raw RGBA pixel data horizontally
+ */
+export function mirrorRawPixelsHorizontal(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number
+): Uint8ClampedArray {
+  const output = new Uint8ClampedArray(pixels.length)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const srcIdx = (y * width + x) * 4
+      const dstIdx = (y * width + (width - 1 - x)) * 4
+      output[dstIdx] = pixels[srcIdx]
+      output[dstIdx + 1] = pixels[srcIdx + 1]
+      output[dstIdx + 2] = pixels[srcIdx + 2]
+      output[dstIdx + 3] = pixels[srcIdx + 3]
+    }
+  }
+  return output
+}
+

@@ -4,12 +4,17 @@ import Taro, { useRouter, useLoad } from '@tarojs/taro'
 import { BeadCanvas, type BeadCanvasRef } from '@/components/BeadCanvas'
 import { ToolBar, type EditTool } from '@/components/ToolBar'
 import { ColorPaletteBar } from '@/components/ColorPaletteBar'
+import { QuickActionBar } from '@/components/QuickActionBar'
+import { DrawingInfoCard } from '@/components/DrawingInfoCard'
 import { ConfigModal } from '@/components/ConfigModal'
+import { FullColorPickerSheet } from '@/components/FullColorPickerSheet'
 import { getPalette } from '@/palettes'
 import type { BeadBrand, BeadColor } from '@/palettes/types'
 import {
   quantizeImageData,
   getBeadColorStats,
+  mirrorGridHorizontal,
+  mirrorRawPixelsHorizontal,
   type BeadCell,
   type BeadColorStatItem
 } from '@/utils/quantizer'
@@ -20,11 +25,13 @@ import {
   saveSheetImage
 } from '@/utils/exporter'
 import { SAMPLES, sampleToImageData, type SamplePattern } from '@/assets/samples'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import './index.scss'
 
 export type ThemeMode = 'dark' | 'light'
 
-export default function IndexPage() {
+function IndexPageInner() {
+  console.log('[IndexPageInner] Component render started')
   const router = useRouter()
   const [theme, setTheme] = useState<ThemeMode>(() => {
     try {
@@ -49,6 +56,10 @@ export default function IndexPage() {
 
   const [showConfigModal, setShowConfigModal] = useState(false)
   const [showSamplePicker, setShowSamplePicker] = useState(false)
+  const [showColorCodes, setShowColorCodes] = useState(false)
+  const [showRulers, setShowRulers] = useState(false)
+  const [showFullColorPicker, setShowFullColorPicker] = useState(false)
+  const [colorPickerTargetPos, setColorPickerTargetPos] = useState<{ x: number; y: number } | null>(null)
   const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null)
 
   const [grid, setGrid] = useState<BeadCell[][]>([])
@@ -485,16 +496,9 @@ export default function IndexPage() {
     }
 
     if (currentTool === 'pencil') {
-      if (!activeColor) return
-      setGrid(prev => {
-        const next = prev.map(row => row.map(c => ({ ...c })))
-        next[y][x].color = { ...activeColor }
-        next[y][x].isEmpty = false
-        setColorStats(getBeadColorStats(next))
-        historyRef.current.pushState(next)
-        updateHistoryState()
-        return next
-      })
+      canvasRef.current?.getSnapshot?.()
+      setColorPickerTargetPos({ x, y })
+      setShowFullColorPicker(true)
       return
     }
 
@@ -526,6 +530,26 @@ export default function IndexPage() {
     }
   }, [currentTool, selectedColorCode, activeColor, updateHistoryState])
 
+  const handleSelectFullColor = useCallback((selectedColor: BeadColor, pos: { x: number; y: number }) => {
+    setGrid(prev => {
+      const next = prev.map(row => row.map(c => ({ ...c })))
+      next[pos.y][pos.x].color = { ...selectedColor }
+      next[pos.y][pos.x].isEmpty = false
+      setColorStats(getBeadColorStats(next))
+      historyRef.current.pushState(next)
+      updateHistoryState()
+      return next
+    })
+    setActiveColor(selectedColor)
+    setSelectedColorCode(selectedColor.code)
+    setShowFullColorPicker(false)
+    Taro.showToast({
+      title: `已更改 (${pos.x + 1}, ${pos.y + 1}) 为 ${selectedColor.code}`,
+      icon: 'none',
+      duration: 1500
+    })
+  }, [updateHistoryState])
+
   const handleUndo = useCallback(() => {
     const prev = historyRef.current.undo()
     if (prev) {
@@ -543,6 +567,32 @@ export default function IndexPage() {
       updateHistoryState()
     }
   }, [updateHistoryState])
+
+  const handleMirrorHorizontal = useCallback(() => {
+    if (!grid || grid.length === 0) return
+    const nextGrid = mirrorGridHorizontal(grid)
+    setGrid(nextGrid)
+    setColorStats(getBeadColorStats(nextGrid))
+    historyRef.current.pushState(nextGrid)
+    updateHistoryState()
+
+    if (rawImagePixelsRef.current && rawImageWidthRef.current > 0) {
+      rawImagePixelsRef.current = mirrorRawPixelsHorizontal(
+        rawImagePixelsRef.current,
+        rawImageWidthRef.current,
+        rawImageHeightRef.current
+      )
+    }
+    Taro.showToast({ title: '已水平镜像', icon: 'none', duration: 1000 })
+  }, [grid, updateHistoryState])
+
+  const handleToggleColorCodes = useCallback(() => {
+    setShowColorCodes(prev => !prev)
+  }, [])
+
+  const handleToggleRulers = useCallback(() => {
+    setShowRulers(prev => !prev)
+  }, [])
 
   const handleApplyConfig = useCallback((payload: {
     brand: BeadBrand
@@ -570,7 +620,7 @@ export default function IndexPage() {
       grid[0].length,
       grid.length,
       colorStats.size,
-      { cellSize: 26, rulerSize: 40, headerHeight: 90, margin: 30 }
+      { cellSize: 22, rulerSize: 28, margin: 20 }
     )
 
     const isWeApp = process.env.TARO_ENV === 'weapp'
@@ -581,44 +631,66 @@ export default function IndexPage() {
       offCanvas.height = dims.height
       const offCtx = offCanvas.getContext('2d')
       if (offCtx) {
-        renderCraftSheet(offCtx, grid, currentPalette.name, colorStats, dims)
+        await renderCraftSheet(offCtx, grid, currentPalette.name, colorStats, dims, offCanvas)
         const dataUrl = offCanvas.toDataURL('image/png')
         Taro.hideLoading()
-        saveSheetImage(dataUrl)
+        await saveSheetImage(dataUrl, Taro)
       } else {
         Taro.hideLoading()
+        Taro.showToast({ title: '初始化画布失败', icon: 'none' })
       }
     } else {
-      const query = Taro.createSelectorQuery()
-      query
-        .select('#exportCanvas')
-        .fields({ node: true, size: true })
-        .exec((res: any) => {
-          if (!res || !res[0] || !res[0].node) {
-            Taro.hideLoading()
-            return
-          }
-          const expCanvas = res[0].node
-          expCanvas.width = dims.width
-          expCanvas.height = dims.height
-          const expCtx = expCanvas.getContext('2d')
-
-          renderCraftSheet(expCtx, grid, currentPalette.name, colorStats, dims)
-
-          Taro.canvasToTempFilePath({
-            canvas: expCanvas,
-            fileType: 'png',
-            quality: 1,
-            success: (saveRes) => {
+      let retryCount = 0
+      const executeExport = () => {
+        const query = Taro.createSelectorQuery()
+        query
+          .select('#exportCanvas')
+          .fields({ node: true, size: true })
+          .exec(async (res: any) => {
+            if (!res || !res[0] || !res[0].node) {
+              if (retryCount < 8) {
+                retryCount++
+                setTimeout(executeExport, 100)
+                return
+              }
               Taro.hideLoading()
-              saveSheetImage(saveRes.tempFilePath)
-            },
-            fail: () => {
+              Taro.showToast({ title: '图纸画布未就绪，请重试', icon: 'none' })
+              return
+            }
+            const expCanvas = res[0].node
+            expCanvas.width = dims.width
+            expCanvas.height = dims.height
+            const expCtx = expCanvas.getContext('2d')
+
+            try {
+              await renderCraftSheet(expCtx, grid, currentPalette.name, colorStats, dims, expCanvas)
+
+              Taro.canvasToTempFilePath({
+                canvas: expCanvas,
+                width: dims.width,
+                height: dims.height,
+                destWidth: dims.width,
+                destHeight: dims.height,
+                fileType: 'png',
+                quality: 1,
+                success: async (saveRes) => {
+                  Taro.hideLoading()
+                  await saveSheetImage(saveRes.tempFilePath, Taro)
+                },
+                fail: (err) => {
+                  console.error('canvasToTempFilePath error', err)
+                  Taro.hideLoading()
+                  Taro.showToast({ title: '保存图片失败，请重试', icon: 'none' })
+                }
+              })
+            } catch (renderErr) {
+              console.error('renderCraftSheet error', renderErr)
               Taro.hideLoading()
-              Taro.showToast({ title: '导出失败', icon: 'none' })
+              Taro.showToast({ title: '图纸渲染异常，请重试', icon: 'none' })
             }
           })
-        })
+      }
+      executeExport()
     }
   }, [grid, colorStats, currentPalette])
 
@@ -693,6 +765,16 @@ export default function IndexPage() {
     })
   }
 
+  const totalBeadCount = useMemo(() => {
+    let sum = 0
+    colorStats.forEach(item => {
+      sum += item.count
+    })
+    return sum
+  }, [colorStats])
+
+  const isAnyModalOpen = showFullColorPicker || showConfigModal || showSamplePicker
+
   return (
     <View className={`app-container theme-${theme}`}>
       {/* 微调工具栏 */}
@@ -703,19 +785,20 @@ export default function IndexPage() {
         onSelectTool={setCurrentTool}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        onOpenConfig={() => setShowConfigModal(true)}
-        onExport={handleExportSheet}
       />
 
       {/* 中间主视图画布 */}
-      <View className="canvas-viewport">
+      <View className="canvas-viewport" catchMove={true}>
         <BeadCanvas
           ref={canvasRef}
           grid={grid}
           selectedColorCode={selectedColorCode}
           tool={currentTool}
           theme={theme}
+          showColorCodes={showColorCodes}
+          showRulers={showRulers}
           activeColor={activeColor}
+          isOverlayActive={isAnyModalOpen}
           onCellClick={handleCellClick}
         />
 
@@ -734,7 +817,20 @@ export default function IndexPage() {
         )}
       </View>
 
-      {/* 底部色号清单与寻豆面板 */}
+      {/* 色号清单上方：快捷操作栏 */}
+      <QuickActionBar
+        showColorCodes={showColorCodes}
+        showRulers={showRulers}
+        onToggleColorCodes={handleToggleColorCodes}
+        onToggleRulers={handleToggleRulers}
+        onMirrorHorizontal={handleMirrorHorizontal}
+        onOpenConfig={() => {
+          canvasRef.current?.getSnapshot?.()
+          setShowConfigModal(true)
+        }}
+      />
+
+      {/* 色号清单与寻豆面板 */}
       <ColorPaletteBar
         stats={colorStats}
         selectedColorCode={selectedColorCode}
@@ -742,6 +838,23 @@ export default function IndexPage() {
         onSelectColorCode={setSelectedColorCode}
         onSelectActiveColor={setActiveColor}
       />
+
+      {/* 色号清单下方：图纸信息面板 */}
+      <DrawingInfoCard
+        width={boardWidth}
+        height={boardHeight}
+        totalBeads={totalBeadCount}
+        colorCount={colorStats.size}
+      />
+
+      {/* 图纸信息面板下方：醒目大号下载图纸按钮 */}
+      <View className="export-action-card">
+        <View className="download-sheet-btn" onClick={handleExportSheet}>
+          <Text className="btn-icon">📥</Text>
+          <Text className="btn-text">下载高清施工图纸</Text>
+        </View>
+        <Text className="btn-hint">全幅对齐标准施工图纸 · 含坐标与色号清单 · 自动保存相册</Text>
+      </View>
 
       {/* 参数配置弹窗 */}
       <ConfigModal
@@ -753,8 +866,28 @@ export default function IndexPage() {
         onClose={() => setShowConfigModal(false)}
         onApply={handleApplyConfig}
         onPickImage={handlePickImage}
-        onSelectSample={() => setShowSamplePicker(true)}
+        onSelectSample={() => {
+          canvasRef.current?.getSnapshot?.()
+          setShowSamplePicker(true)
+        }}
       />
+
+      {/* 全量色号选择抽屉 */}
+      {showFullColorPicker && (
+        <FullColorPickerSheet
+          visible={showFullColorPicker}
+          brand={currentBrand}
+          targetPos={colorPickerTargetPos}
+          currentCellColor={
+            colorPickerTargetPos && grid[colorPickerTargetPos.y]
+              ? grid[colorPickerTargetPos.y][colorPickerTargetPos.x]?.color
+              : null
+          }
+          inUseColors={Array.from(colorStats.values()).map(s => s.color)}
+          onClose={() => setShowFullColorPicker(false)}
+          onSelectColor={handleSelectFullColor}
+        />
+      )}
 
       {/* 样图选择弹层 */}
       {showSamplePicker && (
@@ -792,3 +925,12 @@ export default function IndexPage() {
     </View>
   )
 }
+
+export default function IndexPage() {
+  return (
+    <ErrorBoundary>
+      <IndexPageInner />
+    </ErrorBoundary>
+  )
+}
+

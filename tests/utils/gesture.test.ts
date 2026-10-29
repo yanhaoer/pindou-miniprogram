@@ -4,7 +4,9 @@ import {
   screenToGrid,
   gridToScreen,
   calculateTouchDistance,
-  calculateTouchCenter
+  calculateTouchCenter,
+  clampViewportBounds,
+  getCanvasRelativeCoords
 } from '@/utils/gesture'
 
 describe('Gesture & Viewport Math System', () => {
@@ -48,5 +50,49 @@ describe('Gesture & Viewport Math System', () => {
 
     const center = calculateTouchCenter(t1, t2)
     expect(center).toEqual({ x: 15, y: 20 })
+  })
+
+  describe('clampViewportBounds', () => {
+    it('centers board when scaled board is smaller than container', () => {
+      const vp = { scale: 1.0, offsetX: 0, offsetY: 0 }
+      const result = clampViewportBounds(vp, 400, 400, 200, 200)
+      expect(result.offsetX).toBe(100)
+      expect(result.offsetY).toBe(100)
+    })
+
+    it('clamps offsetX and offsetY within [container - board, 0] when board is larger than container', () => {
+      // 画板放大后为 600x600，容器为 400x400。允许范围为 [-200, 0]
+      const vp1 = { scale: 1.0, offsetX: 50, offsetY: -300 }
+      const result1 = clampViewportBounds(vp1, 400, 400, 600, 600)
+      expect(result1.offsetX).toBe(0) // 超过最大值 0，钳位为 0
+      expect(result1.offsetY).toBe(-200) // 小于最小值 -200，钳位为 -200
+    })
+
+    it('allows valid offsets when board is inside bounds', () => {
+      const vp = { scale: 1.0, offsetX: -100, offsetY: -50 }
+      const result = clampViewportBounds(vp, 400, 400, 600, 600)
+      expect(result.offsetX).toBe(-100)
+      expect(result.offsetY).toBe(-50)
+    })
+  })
+
+  describe('getCanvasRelativeCoords', () => {
+    it('prefers touch.x and touch.y when they are defined numbers', () => {
+      const touch = { x: 45, y: 80, clientX: 100, clientY: 220 }
+      const rect = { left: 55, top: 140 }
+      expect(getCanvasRelativeCoords(touch, rect)).toEqual({ x: 45, y: 80 })
+    })
+
+    it('calculates relative coords using clientX/clientY minus rect left/top when touch.x/y undefined', () => {
+      const touch = { clientX: 120, clientY: 250 }
+      const rect = { left: 20, top: 100 }
+      expect(getCanvasRelativeCoords(touch, rect)).toEqual({ x: 100, y: 150 })
+    })
+
+    it('handles negative or boundary values properly', () => {
+      const touch = { clientX: 10, clientY: 50 }
+      const rect = { left: 20, top: 100 }
+      expect(getCanvasRelativeCoords(touch, rect)).toEqual({ x: -10, y: -50 })
+    })
   })
 })

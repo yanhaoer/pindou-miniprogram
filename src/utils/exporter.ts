@@ -1,9 +1,10 @@
 import type { BeadCell, BeadColorStatItem } from './quantizer'
+import { getContrastTextColor } from './color-space'
+import { QRCODE_BASE64 } from '@/assets/qrcode'
 
 export interface SheetDimensionOptions {
   cellSize?: number
   rulerSize?: number
-  headerHeight?: number
   margin?: number
 }
 
@@ -13,13 +14,15 @@ export interface SheetDimensions {
   boardWidth: number
   boardHeight: number
   rulerSize: number
-  headerHeight: number
   margin: number
   cellSize: number
+  legendRows: number
+  legendCols: number
 }
 
 /**
  * Calculate dimensions for the export construction drawing sheet
+ * Aligned with standard craft sheet layout (图2)
  */
 export function calculateSheetDimensions(
   gridW: number,
@@ -28,24 +31,25 @@ export function calculateSheetDimensions(
   options: SheetDimensionOptions = {}
 ): SheetDimensions {
   const {
-    cellSize = 24,
-    rulerSize = 36,
-    headerHeight = 90,
-    margin = 30
+    cellSize = 22,
+    rulerSize = 28,
+    margin = 20
   } = options
 
   const boardWidth = gridW * cellSize
   const boardHeight = gridH * cellSize
 
-  // Ruler on left and top
-  const width = Math.max(800, boardWidth + rulerSize + margin * 2)
+  // Width includes board + rulerSize on left + margin on both sides
+  const width = Math.max(720, boardWidth + rulerSize + margin * 2)
 
-  // Legend section layout: 4 columns
-  const cols = 4
-  const rows = Math.ceil(colorCount / cols)
-  const legendHeight = 40 + rows * 36 + margin
+  // Legend section layout: columns fit nicely on left side of QR code (leaving 100px on right for QR)
+  const availableLegendW = width - margin * 2 - 100
+  const legendCols = Math.max(4, Math.floor(availableLegendW / 76))
+  const legendRows = Math.ceil(colorCount / legendCols)
+  const legendHeight = 32 + legendRows * 24
 
-  const height = headerHeight + rulerSize + boardHeight + legendHeight + margin * 2
+  const bottomSectionHeight = Math.max(legendHeight, 105) + 10
+  const height = margin + rulerSize + boardHeight + 20 + bottomSectionHeight + margin
 
   return {
     width,
@@ -53,9 +57,10 @@ export function calculateSheetDimensions(
     boardWidth,
     boardHeight,
     rulerSize,
-    headerHeight,
     margin,
-    cellSize
+    cellSize,
+    legendRows,
+    legendCols
   }
 }
 
@@ -71,217 +76,277 @@ export function formatSheetTitle(
 
 /**
  * Render complete construction chart to an offscreen canvas context
+ * Perfectly aligned with the sample sheet (图2)
  */
-export function renderCraftSheet(
+export async function renderCraftSheet(
   ctx: any,
   grid: BeadCell[][],
   paletteName: string,
   stats: Map<string, BeadColorStatItem>,
-  dims: SheetDimensions
-) {
-  const { width, height, margin, headerHeight, rulerSize, cellSize, boardWidth, boardHeight } = dims
+  dims: SheetDimensions,
+  canvasInstance?: any
+): Promise<void> {
+  const { width, height, margin, rulerSize, cellSize, boardWidth, boardHeight, legendCols } = dims
   const gridH = grid.length
   const gridW = grid[0].length
 
-  // 1. Background
+  const boardLeft = margin + rulerSize
+  const boardTop = margin + rulerSize
+
+  // 1. Background (pure white)
   ctx.fillStyle = '#FFFFFF'
   ctx.fillRect(0, 0, width, height)
 
-  // 2. Header
-  ctx.fillStyle = '#111827'
-  ctx.font = 'bold 26px sans-serif'
+  // 1.5 Top-Left Sheet Title in Black Bold Heiti
+  ctx.fillStyle = '#000000'
+  ctx.font = 'bold 12px "SimHei", "PingFang SC", sans-serif'
   ctx.textAlign = 'left'
-  ctx.fillText('拼豆施工图纸 (Bead Craft Sheet)', margin, margin + 30)
-
-  ctx.fillStyle = '#4B5563'
-  ctx.font = '14px sans-serif'
-  let totalBeads = 0
-  stats.forEach(s => (totalBeads += s.count))
-  const subtitle = formatSheetTitle(paletteName, gridW, gridH, totalBeads, stats.size)
-  ctx.fillText(subtitle, margin, margin + 60)
-
-  // 3. Coordinate Rulers (Top & Left)
-  const boardLeft = margin + rulerSize
-  const boardTop = margin + headerHeight + rulerSize
-
-  ctx.fillStyle = '#6B7280'
-  ctx.font = '10px monospace'
-  ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
+  ctx.fillText('图片信息', margin, (margin + rulerSize) / 2)
+
+  // 2. Coordinate Rulers (Top & Left) - numbers every 5 cells (1, 6, 11, 16...)
+  ctx.fillStyle = '#374151'
+  ctx.font = 'bold 10px monospace'
 
   // Top column numbers
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'bottom'
   for (let x = 0; x < gridW; x++) {
     const cx = boardLeft + x * cellSize + cellSize / 2
-    if ((x + 1) % 5 === 0 || x === 0 || x === gridW - 1) {
-      ctx.fillText(String(x + 1), cx, boardTop - 14)
+    if (x % 5 === 0 || x === gridW - 1) {
+      ctx.fillText(String(x + 1), cx, boardTop - 4)
     }
   }
 
   // Left row numbers
+  ctx.textAlign = 'right'
+  ctx.textBaseline = 'middle'
   for (let y = 0; y < gridH; y++) {
     const cy = boardTop + y * cellSize + cellSize / 2
-    if ((y + 1) % 5 === 0 || y === 0 || y === gridH - 1) {
-      ctx.fillText(String(y + 1), boardLeft - 18, cy)
+    if (y % 5 === 0 || y === gridH - 1) {
+      ctx.fillText(String(y + 1), boardLeft - 6, cy)
     }
   }
 
-  // 4. Board Peg Background
-  ctx.fillStyle = '#F3F4F6'
-  ctx.fillRect(boardLeft, boardTop, boardWidth, boardHeight)
-
-  // 5. Draw Beads
-  const beadR = (cellSize * 0.9) / 2
-  const holeR = beadR * 0.38
+  // 3. Draw Square Bead Cells with Color Codes
+  const codeFontSize = Math.max(7, Math.min(13, Math.floor(cellSize * 0.44)))
 
   for (let y = 0; y < gridH; y++) {
     for (let x = 0; x < gridW; x++) {
       const cell = grid[y][x]
-      const cx = boardLeft + x * cellSize + cellSize / 2
-      const cy = boardTop + y * cellSize + cellSize / 2
+      const cx = boardLeft + x * cellSize
+      const cy = boardTop + y * cellSize
 
       if (cell.isEmpty) {
-        ctx.fillStyle = '#E5E7EB'
-        ctx.beginPath()
-        ctx.arc(cx, cy, 2, 0, Math.PI * 2)
-        ctx.fill()
-        continue
-      }
+        ctx.fillStyle = '#F9FAFB'
+        ctx.fillRect(cx, cy, cellSize, cellSize)
+      } else {
+        // Cell background
+        ctx.fillStyle = cell.color.hex
+        ctx.fillRect(cx, cy, cellSize, cellSize)
 
-      // Outer bead body
-      ctx.fillStyle = cell.color.hex
-      ctx.beginPath()
-      ctx.arc(cx, cy, beadR, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Outline
-      ctx.lineWidth = 1
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)'
-      ctx.stroke()
-
-      // Center hole
-      ctx.fillStyle = '#374151'
-      ctx.beginPath()
-      ctx.arc(cx, cy, holeR, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Text code if cell size is large enough
-      if (cellSize >= 20) {
-        ctx.fillStyle = '#FFFFFF'
-        ctx.font = 'bold 8px monospace'
+        // Center color code
+        const textColor = getContrastTextColor(cell.color.hex)
+        ctx.fillStyle = textColor
+        ctx.font = `bold ${codeFontSize}px monospace`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
-        // Contrast drop shadow
-        ctx.strokeStyle = '#000000'
-        ctx.lineWidth = 2
-        ctx.strokeText(cell.color.code, cx, cy)
-        ctx.fillText(cell.color.code, cx, cy)
+        ctx.fillText(cell.color.code, cx + cellSize / 2, cy + cellSize / 2)
       }
+
+      // Thin cell outline
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)'
+      ctx.lineWidth = 0.5
+      ctx.strokeRect(cx, cy, cellSize, cellSize)
     }
   }
 
-  // 6. Grid Divider Lines (every 5 cells thicker)
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)'
-  ctx.lineWidth = 1
+  // 4. Grid Divider Lines (every 5 cells thicker)
   for (let x = 0; x <= gridW; x++) {
-    if (x % 5 === 0) {
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)'
-      ctx.lineWidth = 1.5
-    } else {
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)'
-      ctx.lineWidth = 0.5
-    }
+    const lx = boardLeft + x * cellSize
+    const isMajor = x % 5 === 0 || x === 0 || x === gridW
+    ctx.strokeStyle = isMajor ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0.12)'
+    ctx.lineWidth = isMajor ? 1.2 : 0.5
     ctx.beginPath()
-    ctx.moveTo(boardLeft + x * cellSize, boardTop)
-    ctx.lineTo(boardLeft + x * cellSize, boardTop + boardHeight)
+    ctx.moveTo(lx, boardTop)
+    ctx.lineTo(lx, boardTop + boardHeight)
     ctx.stroke()
   }
 
   for (let y = 0; y <= gridH; y++) {
-    if (y % 5 === 0) {
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)'
-      ctx.lineWidth = 1.5
-    } else {
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)'
-      ctx.lineWidth = 0.5
-    }
+    const ly = boardTop + y * cellSize
+    const isMajor = y % 5 === 0 || y === 0 || y === gridH
+    ctx.strokeStyle = isMajor ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0.12)'
+    ctx.lineWidth = isMajor ? 1.2 : 0.5
     ctx.beginPath()
-    ctx.moveTo(boardLeft, boardTop + y * cellSize)
-    ctx.lineTo(boardLeft + boardWidth, boardTop + y * cellSize)
+    ctx.moveTo(boardLeft, ly)
+    ctx.lineTo(boardLeft + boardWidth, ly)
     ctx.stroke()
   }
 
-  // 7. Color Legend Table at Bottom
-  const legendTop = boardTop + boardHeight + 35
+  // 5. Bottom Section: Color Legend (Left)
+  const legendTop = boardTop + boardHeight + 18
   ctx.fillStyle = '#111827'
-  ctx.font = 'bold 16px sans-serif'
+  ctx.font = 'bold 13px sans-serif'
   ctx.textAlign = 'left'
-  ctx.fillText('色号用量清单 (Color Legend):', margin, legendTop)
+  ctx.textBaseline = 'top'
+  ctx.fillText('颜色清单：', margin, legendTop)
 
   const statsList = Array.from(stats.values()).sort((a, b) => b.count - a.count)
-  const colWidth = (width - margin * 2) / 4
-  const startY = legendTop + 25
+  const itemW = 76
+  const itemH = 24
+  const startY = legendTop + 24
 
   statsList.forEach((item, index) => {
-    const c = index % 4
-    const r = Math.floor(index / 4)
-    const itemX = margin + c * colWidth
-    const itemY = startY + r * 32
+    const col = index % legendCols
+    const row = Math.floor(index / legendCols)
+    const ix = margin + col * itemW
+    const iy = startY + row * itemH
 
-    // Swatch
+    // Square swatch
     ctx.fillStyle = item.color.hex
-    ctx.beginPath()
-    ctx.arc(itemX + 10, itemY + 10, 9, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)'
-    ctx.lineWidth = 1
-    ctx.stroke()
+    ctx.fillRect(ix, iy + 2, 13, 13)
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)'
+    ctx.lineWidth = 0.5
+    ctx.strokeRect(ix, iy + 2, 13, 13)
 
-    // Label: "A01 (120颗)"
+    // Code & count text
     ctx.fillStyle = '#1F2937'
-    ctx.font = '12px monospace'
+    ctx.font = '10px sans-serif'
     ctx.textAlign = 'left'
-    ctx.fillText(`${item.color.code} : ${item.count} 颗`, itemX + 26, itemY + 14)
+    ctx.textBaseline = 'middle'
+    ctx.fillText(`${item.color.code} ${item.count}颗`, ix + 17, iy + 9)
   })
+
+  // 6. Bottom Section: Mini Program QR Code (Right)
+  const qrW = 70
+  const qrH = 68
+  const qrX = width - margin - qrW - 4
+  const qrY = legendTop + 4
+
+  // Draw QR code image
+  try {
+    if (canvasInstance && typeof canvasInstance.createImage === 'function') {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => resolve(), 600)
+        const img = canvasInstance.createImage()
+        img.onload = () => {
+          clearTimeout(timer)
+          try {
+            ctx.drawImage(img, qrX, qrY, qrW, qrH)
+          } catch (_) {}
+          resolve()
+        }
+        img.onerror = () => {
+          clearTimeout(timer)
+          resolve()
+        }
+        img.src = QRCODE_BASE64
+      })
+    } else if (typeof Image !== 'undefined') {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => resolve(), 600)
+        const img = new Image()
+        img.onload = () => {
+          clearTimeout(timer)
+          try {
+            ctx.drawImage(img, qrX, qrY, qrW, qrH)
+          } catch (_) {}
+          resolve()
+        }
+        img.onerror = () => {
+          clearTimeout(timer)
+          resolve()
+        }
+        img.src = QRCODE_BASE64
+      })
+    }
+  } catch (err) {
+    console.warn('QR code draw skipped', err)
+  }
+
+  // QR Code Captions
+  ctx.fillStyle = '#1F2937'
+  ctx.font = 'bold 9px "SimHei", "PingFang SC", sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  ctx.fillText('拼豆生成器', qrX + qrW / 2, qrY + qrH + 4)
+  ctx.font = '8px sans-serif'
+  ctx.fillStyle = '#6B7280'
+  ctx.fillText('扫码自取图纸', qrX + qrW / 2, qrY + qrH + 16)
 }
 
 /**
  * Save image to photo album in WeChat Mini Program or trigger download in H5
  */
-export async function saveSheetImage(tempFilePath: string): Promise<boolean> {
-  // #ifdef MP-WEIXIN
-  return new Promise((resolve) => {
-    uni.saveImageToPhotosAlbum({
-      filePath: tempFilePath,
-      success: () => {
-        uni.showToast({ title: '图纸已保存至相册', icon: 'success' })
-        resolve(true)
-      },
-      fail: (err) => {
-        if (err.errMsg && err.errMsg.includes('auth')) {
-          uni.showModal({
-            title: '授权提示',
-            content: '需要您的相册授权才能保存施工图纸，请前往设置开启',
-            confirmText: '去开启',
-            success: (modalRes) => {
-              if (modalRes.confirm) {
-                uni.openSetting({})
-              }
-            }
-          })
-        } else {
-          uni.showToast({ title: '保存失败，请重试', icon: 'none' })
-        }
-        resolve(false)
-      }
-    })
-  })
-  // #endif
+export async function saveSheetImage(tempFilePath: string, taroApi?: any): Promise<boolean> {
+  const api =
+    taroApi ||
+    (typeof Taro !== 'undefined' ? Taro : null) ||
+    (typeof wx !== 'undefined' ? wx : null) ||
+    (globalThis as any).Taro ||
+    (globalThis as any).wx ||
+    (typeof window !== 'undefined' ? (window as any).Taro || (window as any).wx : null)
 
-  // #ifndef MP-WEIXIN
-  const a = document.createElement('a')
-  a.href = tempFilePath
-  a.download = `pindou-craft-sheet-${Date.now()}.png`
-  a.click()
-  return true
-  // #endif
+  if (api && typeof api.saveImageToPhotosAlbum === 'function') {
+    return new Promise((resolve) => {
+      api.saveImageToPhotosAlbum({
+        filePath: tempFilePath,
+        success: () => {
+          if (typeof api.showModal === 'function') {
+            api.showModal({
+              title: '下载成功',
+              content: '高清施工图纸已成功保存到您的手机相册！',
+              showCancel: false,
+              confirmText: '太棒了'
+            })
+          }
+          if (typeof api.showToast === 'function') {
+            api.showToast({ title: '已保存至相册', icon: 'success', duration: 2500 })
+          }
+          resolve(true)
+        },
+        fail: (err: any) => {
+          if (
+            err &&
+            err.errMsg &&
+            (err.errMsg.includes('auth') || err.errMsg.includes('deny') || err.errMsg.includes('authorize'))
+          ) {
+            if (typeof api.showModal === 'function') {
+              api.showModal({
+                title: '需要相册权限',
+                content: '需要允许保存图片到相册权限，才能保存高清施工图纸。请前往设置开启。',
+                confirmText: '去设置',
+                cancelText: '取消',
+                success: (modalRes: any) => {
+                  if (modalRes.confirm && typeof api.openSetting === 'function') {
+                    api.openSetting({})
+                  }
+                }
+              })
+            }
+          } else {
+            if (typeof api.showToast === 'function') {
+              api.showToast({ title: '保存失败，请稍后重试', icon: 'none' })
+            }
+          }
+          resolve(false)
+        }
+      })
+    })
+  }
+
+  // H5 / Browser 环境
+  if (typeof document !== 'undefined') {
+    const a = document.createElement('a')
+    a.href = tempFilePath
+    a.download = `pindou-craft-sheet-${Date.now()}.png`
+    a.click()
+    if (api && typeof api.showToast === 'function') {
+      api.showToast({ title: '图纸已开始下载', icon: 'success' })
+    }
+    return true
+  }
+
+  return false
 }

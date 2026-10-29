@@ -1,0 +1,116 @@
+.drawing-info-card {
+  display: flex;
+  flex-direction: column;
+  margin: 8px 12px 14px;
+  padding: 12px 16px;
+  background: #181920;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+}
+
+.info-card-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.info-card-title {
+  font-size: 16px;
+  font-weight: 800;
+  font-family: "SimHei", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+  border-left: 3px solid #38bdf8;
+  padding-left: 8px;
+  line-height: 1.2;
+}
+
+.info-card-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  width: 100%;
+}
+
+.info-stat-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+
+  .stat-label {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-bottom: 3px;
+    font-weight: 500;
+  }
+
+  .stat-value-group {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+  }
+
+  .stat-value {
+    font-size: 15px;
+    font-weight: 700;
+    color: #f8fafc;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .stat-unit {
+    font-size: 10px;
+    color: #64748b;
+    font-weight: 500;
+  }
+}
+
+.stat-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+/* 明亮模式适配 */
+.theme-light .drawing-info-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+
+  .info-card-header {
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .info-card-title {
+    color: #000000;
+    font-weight: 800;
+    font-family: "SimHei", -apple-system, sans-serif;
+    border-left-color: #0284c7;
+  }
+
+  .info-stat-block {
+    .stat-label {
+      color: #64748b;
+    }
+
+    .stat-value {
+      color: #0f172a;
+    }
+
+    .stat-unit {
+      color: #94a3b8;
+    }
+  }
+
+  .stat-divider {
+    background: #e2e8f0;
+  }
+}

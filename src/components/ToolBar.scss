@@ -2,136 +2,93 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  width: 100%;
+  padding: 8px 6px;
+  min-height: 70px;
   background: #18191f;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-}
-
-.tool-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+  gap: 5px;
 }
 
 .tool-btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 54px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
+  padding: 6px 2px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
   transition: all 0.2s ease;
-  min-width: 44px;
 
   &.active {
-    background: #3b82f6;
-    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+    background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
+    border-color: #93c5fd;
+    box-shadow: 0 4px 16px rgba(37, 99, 235, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.4);
 
     .label {
       color: #ffffff;
-      font-weight: bold;
+      font-weight: 800;
+    }
+
+    .icon {
+      transform: scale(1.08);
     }
   }
 
-  .icon {
-    font-size: 15px;
-  }
-
-  .label {
-    font-size: 10px;
-    color: #cfd3dc;
-    margin-top: 1px;
-  }
-}
-
-.action-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.action-btn {
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  cursor: pointer;
-
   &.disabled {
-    opacity: 0.3;
+    opacity: 0.25;
     cursor: not-allowed;
   }
 
-  &.primary {
-    background: rgba(59, 130, 246, 0.2);
-    border: 1px solid rgba(59, 130, 246, 0.4);
+  &:active:not(.disabled) {
+    transform: scale(0.92);
   }
 
-  &.export-btn {
-    background: rgba(56, 189, 248, 0.15);
-    border: 1px solid rgba(56, 189, 248, 0.35);
-
-    &:active {
-      background: rgba(56, 189, 248, 0.3);
-      transform: scale(0.95);
-    }
+  .icon {
+    font-size: 26px;
+    line-height: 1.15;
+    transition: transform 0.15s ease;
   }
-}
 
-.action-icon {
-  font-size: 14px;
-}
-
-.divider {
-  width: 1px;
-  height: 20px;
-  background: rgba(255, 255, 255, 0.1);
-  margin: 0 2px;
+  .label {
+    font-size: 13px;
+    color: #e2e8f0;
+    margin-top: 4px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
 }
 
 /* 明亮模式适配 */
-.theme-light .toolbar-wrapper {
-  background: #ffffff;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+.theme-light {
+  .toolbar-wrapper {
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  }
 
   .tool-btn {
-    background: #f1f5f9;
-    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    border-color: #e2e8f0;
 
     .label {
-      color: #475569;
+      color: #334155;
     }
 
     &.active {
-      background: #3b82f6;
+      background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
       border-color: #2563eb;
-      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
 
       .label {
         color: #ffffff;
       }
     }
   }
-
-  .action-btn {
-    background: #f1f5f9;
-    border: 1px solid #e2e8f0;
-
-    &.primary {
-      background: rgba(59, 130, 246, 0.1);
-      border: 1px solid rgba(59, 130, 246, 0.3);
-    }
-  }
-
-  .divider {
-    background: rgba(0, 0, 0, 0.08);
-  }
 }
-

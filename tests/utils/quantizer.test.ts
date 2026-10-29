@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { quantizeImageData, getBeadColorStats } from '@/utils/quantizer'
+import { quantizeImageData, getBeadColorStats, mirrorGridHorizontal, mirrorRawPixelsHorizontal, type BeadCell } from '@/utils/quantizer'
 import { getPalette } from '@/palettes'
 
 describe('Image Quantizer & Dithering Engine', () => {
@@ -87,4 +87,38 @@ describe('Image Quantizer & Dithering Engine', () => {
     expect(blackStat).toBeDefined()
     expect(blackStat?.count).toBe(1)
   })
+
+  describe('mirrorGridHorizontal', () => {
+    it('flips grid columns horizontally and updates x coordinates', () => {
+      const colorA = { code: 'A', name: 'Color A', hex: '#ff0000', rgb: [255, 0, 0] as [number, number, number] }
+      const colorB = { code: 'B', name: 'Color B', hex: '#00ff00', rgb: [0, 255, 0] as [number, number, number] }
+      const sampleGrid: BeadCell[][] = [
+        [
+          { x: 0, y: 0, color: colorA, isEmpty: false },
+          { x: 1, y: 0, color: colorB, isEmpty: false }
+        ]
+      ]
+      const mirrored = mirrorGridHorizontal(sampleGrid)
+      expect(mirrored[0][0].color.code).toBe('B')
+      expect(mirrored[0][0].x).toBe(0)
+      expect(mirrored[0][1].color.code).toBe('A')
+      expect(mirrored[0][1].x).toBe(1)
+    })
+  })
+
+  describe('mirrorRawPixelsHorizontal', () => {
+    it('mirrors pixel rgba data horizontally', () => {
+      // 2x1 图像：左红右绿
+      const pixels = new Uint8ClampedArray([
+        255, 0, 0, 255,   // x=0: 红色
+        0, 255, 0, 255    // x=1: 绿色
+      ])
+      const mirrored = mirrorRawPixelsHorizontal(pixels, 2, 1)
+      expect(mirrored[0]).toBe(0)   // x=0 变成绿色
+      expect(mirrored[1]).toBe(255)
+      expect(mirrored[4]).toBe(255) // x=1 变成红色
+      expect(mirrored[5]).toBe(0)
+    })
+  })
 })
+

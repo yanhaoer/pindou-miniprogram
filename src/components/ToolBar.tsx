@@ -11,9 +11,17 @@ export interface ToolBarProps {
   onSelectTool: (tool: EditTool) => void
   onUndo: () => void
   onRedo: () => void
-  onOpenConfig: () => void
+  onOpenConfig?: () => void
   onExport?: () => void
 }
+
+const tools: { id: EditTool; name: string; icon: string }[] = [
+  { id: 'view', name: '平移', icon: '🖐️' },
+  { id: 'pencil', name: '画笔', icon: '✏️' },
+  { id: 'bucket', name: '填色', icon: '🪣' },
+  { id: 'eyedropper', name: '吸色', icon: '💧' },
+  { id: 'eraser', name: '橡皮', icon: '🧹' }
+]
 
 export const ToolBar: React.FC<ToolBarProps> = ({
   currentTool,
@@ -21,76 +29,35 @@ export const ToolBar: React.FC<ToolBarProps> = ({
   canRedo,
   onSelectTool,
   onUndo,
-  onRedo,
-  onOpenConfig,
-  onExport
+  onRedo
 }) => {
   return (
     <View className="toolbar-wrapper">
-      <View className="tool-group">
+      {tools.map(tool => (
         <View
-          className={`tool-btn ${currentTool === 'view' ? 'active' : ''}`}
-          onClick={() => onSelectTool('view')}
+          key={tool.id}
+          className={`tool-btn ${currentTool === tool.id ? 'active' : ''}`}
+          onClick={() => onSelectTool(tool.id)}
         >
-          <Text className="icon">🖐️</Text>
-          <Text className="label">平移</Text>
+          <Text className="icon">{tool.icon}</Text>
+          <Text className="label">{tool.name}</Text>
         </View>
+      ))}
 
-        <View
-          className={`tool-btn ${currentTool === 'pencil' ? 'active' : ''}`}
-          onClick={() => onSelectTool('pencil')}
-        >
-          <Text className="icon">✏️</Text>
-          <Text className="label">画笔</Text>
-        </View>
-
-        <View
-          className={`tool-btn ${currentTool === 'bucket' ? 'active' : ''}`}
-          onClick={() => onSelectTool('bucket')}
-        >
-          <Text className="icon">🪣</Text>
-          <Text className="label">填色</Text>
-        </View>
-
-        <View
-          className={`tool-btn ${currentTool === 'eyedropper' ? 'active' : ''}`}
-          onClick={() => onSelectTool('eyedropper')}
-        >
-          <Text className="icon">💧</Text>
-          <Text className="label">吸管</Text>
-        </View>
-
-        <View
-          className={`tool-btn ${currentTool === 'eraser' ? 'active' : ''}`}
-          onClick={() => onSelectTool('eraser')}
-        >
-          <Text className="icon">🧹</Text>
-          <Text className="label">擦除</Text>
-        </View>
+      <View
+        className={`tool-btn action-btn ${!canUndo ? 'disabled' : ''}`}
+        onClick={() => canUndo && onUndo()}
+      >
+        <Text className="icon">↩️</Text>
+        <Text className="label">撤销</Text>
       </View>
 
-      <View className="action-group">
-        <View
-          className={`action-btn ${!canUndo ? 'disabled' : ''}`}
-          onClick={() => canUndo && onUndo()}
-        >
-          <Text className="action-icon">↩️</Text>
-        </View>
-        <View
-          className={`action-btn ${!canRedo ? 'disabled' : ''}`}
-          onClick={() => canRedo && onRedo()}
-        >
-          <Text className="action-icon">↪️</Text>
-        </View>
-        <View className="divider" />
-        <View className="action-btn" onClick={onOpenConfig} title="参数设置">
-          <Text className="action-icon">⚙️</Text>
-        </View>
-        {onExport && (
-          <View className="action-btn export-btn" onClick={onExport} title="导出图纸">
-            <Text className="action-icon">📥</Text>
-          </View>
-        )}
+      <View
+        className={`tool-btn action-btn ${!canRedo ? 'disabled' : ''}`}
+        onClick={() => canRedo && onRedo()}
+      >
+        <Text className="icon">↪️</Text>
+        <Text className="label">重做</Text>
       </View>
     </View>
   )

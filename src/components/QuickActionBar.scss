@@ -1,0 +1,100 @@
+.quick-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 8px 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.action-pill-btn {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 4px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 23px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+
+  &:active,
+  &.btn-hover {
+    transform: scale(0.94);
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .action-icon {
+    font-size: 18px;
+    font-weight: 800;
+    color: #38bdf8;
+    line-height: 1;
+  }
+
+  .action-label {
+    font-size: 14.5px;
+    font-weight: 800;
+    color: #ffffff;
+    line-height: 1;
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+  }
+
+  &.toggle-code-btn.active,
+  &.toggle-ruler-btn.active {
+    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+    border-color: #93c5fd;
+    box-shadow: 0 3px 12px rgba(37, 99, 235, 0.55);
+
+    .action-icon {
+      color: #ffffff;
+    }
+
+    .action-label {
+      color: #ffffff;
+    }
+  }
+}
+
+/* 明亮模式适配 */
+.theme-light .quick-action-bar {
+  .action-pill-btn {
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+
+    &:active,
+    &.btn-hover {
+      background: #f1f5f9;
+    }
+
+    .action-icon {
+      color: #0284c7;
+    }
+
+    .action-label {
+      color: #1e293b;
+    }
+
+    &.toggle-code-btn.active,
+    &.toggle-ruler-btn.active {
+      background: #2563eb;
+      border-color: #2563eb;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+
+      .action-icon,
+      .action-label {
+        color: #ffffff;
+      }
+    }
+  }
+}
+

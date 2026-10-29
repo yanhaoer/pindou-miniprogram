@@ -2,10 +2,13 @@
   display: flex;
   flex-direction: column;
   width: 100vw;
-  height: 100vh;
+  min-height: 100vh;
   background-color: #0f1013;
   color: #f1f2f6;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding-bottom: env(safe-area-inset-bottom, 10px);
 }
 
 /* 效果展示图容器：大致位于红框位置展示，方块状比例呈现 */
@@ -13,25 +16,32 @@
   position: relative;
   width: calc(100vw - 20px);
   height: calc(100vw - 20px);
-  max-height: 52vh;
-  min-height: 280px;
-  margin: 8px auto;
+  max-height: 48vh;
+  min-height: 250px;
+  margin: 6px auto 2px;
   border-radius: 12px;
   overflow: hidden;
   background: #14151a;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   flex-shrink: 0;
+  touch-action: none;
+  overscroll-behavior: none;
 }
 
 .picker-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
   background: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: 999999;
   padding: 16px;
   backdrop-filter: blur(4px);
 }
@@ -154,17 +164,17 @@
   position: fixed;
   left: -9999px;
   top: -9999px;
-  width: 600px;
-  height: 600px;
-  z-index: -9999;
-  opacity: 0;
+  width: 1px;
+  height: 1px;
+  z-index: -100;
+  opacity: 0.01;
   pointer-events: none;
   overflow: hidden;
 }
 
 .export-canvas {
-  width: 600px;
-  height: 600px;
+  width: 1px;
+  height: 1px;
 }
 
 /* 明亮模式顶层与公共弹层适配 */
@@ -227,5 +237,51 @@
       background: rgba(15, 23, 42, 0.7);
     }
   }
+}
+
+/* 下载图纸专属大号行动卡片 */
+.export-action-card {
+  margin: 14px 14px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.download-sheet-btn {
+  width: 100%;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #0284c7 0%, #2563eb 50%, #4f46e5 100%);
+  border-radius: 14px;
+  box-shadow: 0 4px 18px rgba(37, 99, 235, 0.45);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+
+  &:active {
+    transform: scale(0.97);
+    box-shadow: 0 2px 10px rgba(37, 99, 235, 0.3);
+  }
+
+  .btn-icon {
+    font-size: 20px;
+  }
+
+  .btn-text {
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 0.5px;
+  }
+}
+
+.btn-hint {
+  font-size: 11px;
+  color: #94a3b8;
+  text-align: center;
 }
 
