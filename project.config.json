@@ -9,10 +9,10 @@
     "enhance": true,
     "compileHotReLoad": false,
     "postcss": false,
-    "minified": false,
+    "minified": true,
     "compileWorklet": false,
     "uglifyFileName": false,
-    "uploadWithSourceMap": true,
+    "uploadWithSourceMap": false,
     "packNpmManually": false,
     "packNpmRelationList": [],
     "minifyWXSS": true,
@@ -30,7 +30,12 @@
   "compileType": "miniprogram",
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "type": "glob",
+        "value": "**/*.map"
+      }
+    ],
     "include": []
   },
   "editorSetting": {}

@@ -255,10 +255,28 @@
         border: 2rpx solid #edf0f5;
         box-shadow: 0 6rpx 24rpx rgba(0, 0, 0, 0.04);
 
+        &.unlogged {
+          border: 2rpx dashed #ff7875;
+          background: linear-gradient(135deg, rgba(255, 77, 79, 0.04), #ffffff 60%);
+        }
+
+        .user-avatar-wrap {
+          background: #f1f5f9;
+
+          .status-dot {
+            border-color: #ffffff;
+          }
+        }
+
         .user-name {
           color: #0f172a;
         }
         .user-signature {
+          color: #64748b;
+        }
+
+        .card-action .action-hint {
+          background: #f1f5f9;
           color: #64748b;
         }
       }
@@ -290,6 +308,12 @@
           }
           .menu-arrow, .menu-val {
             color: #94a3b8;
+          }
+
+          &.logout-item {
+            .logout-label, .menu-arrow {
+              color: #ff4d4f;
+            }
           }
         }
       }
@@ -892,32 +916,67 @@
     align-items: center;
     gap: 20rpx;
     box-shadow: 0 6rpx 24rpx rgba(0, 0, 0, 0.28);
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:active {
+      transform: scale(0.99);
+    }
+
+    &.unlogged {
+      border: 2rpx dashed rgba(255, 77, 79, 0.4);
+      background: linear-gradient(135deg, rgba(255, 77, 79, 0.07), #16171d 60%);
+    }
+
+    &.logged {
+      border: 2rpx solid rgba(255, 255, 255, 0.12);
+    }
 
     .user-avatar-wrap {
-      width: 100rpx;
-      height: 100rpx;
-      border-radius: 50rpx;
+      width: 104rpx;
+      height: 104rpx;
+      border-radius: 52rpx;
       background: #1f2029;
       position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
 
       .user-avatar-img {
-        width: 80rpx;
-        height: 80rpx;
-        border-radius: 40rpx;
+        width: 88rpx;
+        height: 88rpx;
+        border-radius: 44rpx;
       }
 
       .status-dot {
         position: absolute;
         bottom: 2rpx;
         right: 2rpx;
-        width: 18rpx;
-        height: 18rpx;
+        width: 28rpx;
+        height: 28rpx;
         border-radius: 50%;
         background: #10b981;
         border: 3rpx solid #16171d;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        &.guest {
+          background: #ff4d4f;
+
+          .plus-icon {
+            color: #ffffff;
+            font-size: 20rpx;
+            font-weight: 900;
+            line-height: 1;
+            margin-top: -2rpx;
+          }
+        }
+
+        &.online {
+          background: #10b981;
+        }
       }
     }
 
@@ -925,6 +984,7 @@
       display: flex;
       flex-direction: column;
       flex: 1;
+      overflow: hidden;
 
       .name-row {
         display: flex;
@@ -936,6 +996,9 @@
           font-size: 32rpx;
           font-weight: 800;
           color: #ffffff;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .vip-badge {
@@ -945,12 +1008,34 @@
           font-weight: 800;
           padding: 2rpx 10rpx;
           border-radius: 8rpx;
+          flex-shrink: 0;
+
+          &.guest {
+            background: rgba(255, 77, 79, 0.2);
+            color: #ff6b6b;
+            border: 1rpx solid rgba(255, 77, 79, 0.35);
+          }
         }
       }
 
       .user-signature {
         font-size: 22rpx;
         color: #94a3b8;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .card-action {
+      flex-shrink: 0;
+
+      .action-hint {
+        font-size: 22rpx;
+        color: #94a3b8;
+        padding: 6rpx 14rpx;
+        border-radius: 12rpx;
+        background: rgba(255, 255, 255, 0.06);
       }
     }
   }
@@ -1031,6 +1116,15 @@
       .menu-arrow {
         font-size: 24rpx;
         color: #64748b;
+      }
+
+      &.logout-item {
+        .logout-label {
+          color: #ff6b6b;
+        }
+        .menu-arrow {
+          color: #ff6b6b;
+        }
       }
     }
   }

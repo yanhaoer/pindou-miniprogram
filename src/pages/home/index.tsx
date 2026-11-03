@@ -4,6 +4,8 @@ import Taro from '@tarojs/taro'
 import { getAllPalettes } from '@/palettes'
 import type { BeadBrand } from '@/palettes/types'
 import xiaoguaLogo from '@/assets/xiaogua.png'
+import { getUserProfile, clearUserProfile, UserProfile } from '@/utils/user'
+import { LoginModal } from '@/components/LoginModal'
 import './index.scss'
 
 export type ThemeMode = 'dark' | 'light'
@@ -94,6 +96,8 @@ export default function HomePage() {
   })
 
   const [currentTab, setCurrentTab] = useState<HomeTab>('make')
+  const [userProfile, setUserProfile] = useState<UserProfile>(getUserProfile)
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false)
   const [selectedPresetIndex, setSelectedPresetIndex] = useState<number>(0)
   const [isCustomSize, setIsCustomSize] = useState<boolean>(false)
   const [customWidth, setCustomWidth] = useState<number>(29)
@@ -458,17 +462,39 @@ export default function HomePage() {
       {currentTab === 'mine' && (
         <View className="tab-mine-content">
           {/* 用户个人名片 */}
-          <View className="user-profile-card">
+          <View
+            className={`user-profile-card ${userProfile.isLoggedIn ? 'logged' : 'unlogged'}`}
+            onClick={() => setShowLoginModal(true)}
+          >
             <View className="user-avatar-wrap">
-              <Image src={xiaoguaLogo} className="user-avatar-img" mode="aspectFit" />
-              <View className="status-dot" />
+              <Image
+                src={userProfile.avatarUrl || xiaoguaLogo}
+                className="user-avatar-img"
+                mode={userProfile.avatarUrl ? 'aspectFill' : 'aspectFit'}
+              />
+              <View className={`status-dot ${userProfile.isLoggedIn ? 'online' : 'guest'}`}>
+                {!userProfile.isLoggedIn && <Text className="plus-icon">+</Text>}
+              </View>
             </View>
             <View className="user-meta">
               <View className="name-row">
-                <Text className="user-name">小呱手作人</Text>
-                <Text className="vip-badge">PRO 匠人版</Text>
+                <Text className="user-name">
+                  {userProfile.isLoggedIn ? userProfile.nickName : '点击登录 / 微信授权'}
+                </Text>
+                <Text className={`vip-badge ${userProfile.isLoggedIn ? 'vip' : 'guest'}`}>
+                  {userProfile.isLoggedIn ? 'PRO 匠人版' : '游客模式'}
+                </Text>
               </View>
-              <Text className="user-signature">用彩色豆豆拼出奇趣微世界 ✨</Text>
+              <Text className="user-signature">
+                {userProfile.isLoggedIn
+                  ? '用彩色豆豆拼出奇趣微世界 ✨'
+                  : '点击登录以同步微信头像昵称与手作记录 🚀'}
+              </Text>
+            </View>
+            <View className="card-action">
+              <Text className="action-hint">
+                {userProfile.isLoggedIn ? '编辑' : '登录'} &gt;
+              </Text>
             </View>
           </View>
 
@@ -535,6 +561,33 @@ export default function HomePage() {
               <Text className="menu-label">关于小呱拼豆</Text>
               <Text className="menu-val">v1.0.0</Text>
             </View>
+
+            {userProfile.isLoggedIn && (
+              <View
+                className="menu-item logout-item"
+                onClick={() => {
+                  Taro.showModal({
+                    title: '退出登录',
+                    content: '确定要退出登录吗？退出后将切换回访客身份。',
+                    confirmColor: '#ff4d4f',
+                    success: (res) => {
+                      if (res.confirm) {
+                        clearUserProfile()
+                        setUserProfile(getUserProfile())
+                        Taro.showToast({
+                          title: '已退出登录',
+                          icon: 'success'
+                        })
+                      }
+                    }
+                  })
+                }}
+              >
+                <Text className="menu-icon">🚪</Text>
+                <Text className="menu-label logout-label">退出登录</Text>
+                <Text className="menu-arrow">&gt;</Text>
+              </View>
+            )}
           </View>
 
           <View className="mine-bottom-placeholder" />
@@ -589,6 +642,17 @@ export default function HomePage() {
           </View>
         </View>
       </View>
+
+      {/* 微信授权登录弹窗 */}
+      <LoginModal
+        isOpen={showLoginModal}
+        theme={theme}
+        initialProfile={userProfile}
+        onClose={() => setShowLoginModal(false)}
+        onSuccess={(profile) => {
+          setUserProfile(profile)
+        }}
+      />
     </View>
   )
 }

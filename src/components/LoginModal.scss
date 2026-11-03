@@ -1,0 +1,315 @@
+/* LoginModal Styles */
+.login-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32rpx;
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.2s ease-out;
+
+  .login-modal-content {
+    width: 100%;
+    max-width: 620rpx;
+    background: #181920;
+    border: 2rpx solid rgba(255, 255, 255, 0.1);
+    border-radius: 32rpx;
+    padding: 36rpx 32rpx 40rpx;
+    box-shadow: 0 20rpx 50rpx rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    gap: 30rpx;
+    box-sizing: border-box;
+    animation: scaleIn 0.22s ease-out;
+  }
+
+  /* 顶部标题区 */
+  .modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+
+    .title-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6rpx;
+
+      .modal-title {
+        font-size: 34rpx;
+        font-weight: 800;
+        color: #ffffff;
+        letter-spacing: 0.5rpx;
+      }
+
+      .modal-subtitle {
+        font-size: 22rpx;
+        color: #94a3b8;
+      }
+    }
+
+    .close-btn {
+      width: 52rpx;
+      height: 52rpx;
+      border-radius: 26rpx;
+      background: rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &:active {
+        background: rgba(255, 255, 255, 0.16);
+      }
+
+      .close-icon {
+        font-size: 24rpx;
+        color: #94a3b8;
+        line-height: 1;
+      }
+    }
+  }
+
+  /* 表单分组 */
+  .form-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12rpx;
+
+    .section-label {
+      font-size: 24rpx;
+      font-weight: 700;
+      color: #cbd5e1;
+    }
+  }
+
+  /* 头像选择 */
+  .avatar-section {
+    align-items: center;
+    padding: 10rpx 0;
+
+    .avatar-pick-button {
+      background: transparent;
+      border: none;
+      padding: 0;
+      margin: 0;
+      line-height: normal;
+      overflow: visible;
+
+      &::after {
+        display: none !important;
+        border: none !important;
+      }
+
+      .avatar-preview-wrap {
+        width: 144rpx;
+        height: 144rpx;
+        border-radius: 72rpx;
+        position: relative;
+        padding: 4rpx;
+        background: linear-gradient(135deg, #ff4d4f, #ff7875);
+        box-shadow: 0 8rpx 24rpx rgba(255, 77, 79, 0.35);
+
+        .avatar-img {
+          width: 100%;
+          height: 100%;
+          border-radius: 50%;
+          background: #252733;
+          display: block;
+        }
+
+        .camera-badge {
+          position: absolute;
+          bottom: 2rpx;
+          right: 2rpx;
+          width: 44rpx;
+          height: 44rpx;
+          border-radius: 22rpx;
+          background: #ff4d4f;
+          border: 3rpx solid #181920;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          .camera-icon {
+            font-size: 20rpx;
+            line-height: 1;
+          }
+        }
+      }
+    }
+
+    .avatar-hint {
+      font-size: 22rpx;
+      color: #94a3b8;
+      margin-top: 10rpx;
+    }
+  }
+
+  /* 昵称输入 */
+  .nickname-section {
+    .nickname-input-wrap {
+      background: #111217;
+      border: 2rpx solid rgba(255, 255, 255, 0.12);
+      border-radius: 20rpx;
+      padding: 18rpx 24rpx;
+      transition: border-color 0.2s;
+
+      &:focus-within {
+        border-color: #ff4d4f;
+      }
+
+      .nickname-input {
+        width: 100%;
+        color: #ffffff;
+        font-size: 28rpx;
+        font-weight: 600;
+        height: 44rpx;
+      }
+    }
+
+    .input-hint {
+      font-size: 20rpx;
+      color: #64748b;
+      padding-left: 6rpx;
+    }
+  }
+
+  /* 底部按钮 */
+  .modal-footer {
+    margin-top: 10rpx;
+
+    .submit-login-btn {
+      width: 100%;
+      height: 84rpx;
+      border-radius: 22rpx;
+      background: linear-gradient(135deg, #ff4d4f, #ff7875);
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8rpx 24rpx rgba(255, 77, 79, 0.35);
+      transition: all 0.2s;
+
+      &::after {
+        display: none !important;
+        border: none !important;
+      }
+
+      &:active {
+        transform: scale(0.98);
+        opacity: 0.9;
+      }
+
+      &.submitting {
+        opacity: 0.7;
+      }
+
+      .submit-text {
+        color: #ffffff;
+        font-size: 28rpx;
+        font-weight: 800;
+        letter-spacing: 1rpx;
+      }
+    }
+  }
+
+  /* 亮色模式适配 */
+  &.theme-light {
+    background: rgba(15, 23, 42, 0.45);
+
+    .login-modal-content {
+      background: #ffffff;
+      border-color: #edf0f5;
+      box-shadow: 0 20rpx 50rpx rgba(0, 0, 0, 0.12);
+    }
+
+    .modal-header {
+      .title-group {
+        .modal-title {
+          color: #0f172a;
+        }
+        .modal-subtitle {
+          color: #64748b;
+        }
+      }
+
+      .close-btn {
+        background: #f1f5f9;
+
+        &:active {
+          background: #e2e8f0;
+        }
+
+        .close-icon {
+          color: #64748b;
+        }
+      }
+    }
+
+    .form-section {
+      .section-label {
+        color: #334155;
+      }
+    }
+
+    .avatar-section {
+      .avatar-pick-button {
+        .avatar-preview-wrap {
+          .avatar-img {
+            background: #f8fafc;
+          }
+          .camera-badge {
+            border-color: #ffffff;
+          }
+        }
+      }
+      .avatar-hint {
+        color: #64748b;
+      }
+    }
+
+    .nickname-section {
+      .nickname-input-wrap {
+        background: #f8fafc;
+        border-color: #e2e8f0;
+
+        &:focus-within {
+          border-color: #ff4d4f;
+          background: #ffffff;
+        }
+
+        .nickname-input {
+          color: #0f172a;
+        }
+      }
+
+      .input-hint {
+        color: #94a3b8;
+      }
+    }
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
