@@ -7,6 +7,9 @@ export interface UserProfile {
   nickName: string
   avatarUrl: string
   loginTime?: number
+  openid?: string
+  patternCount?: number
+  vipLevel?: string
 }
 
 const STORAGE_KEY = 'pindou_user_profile'
@@ -37,7 +40,10 @@ export function getUserProfile(): UserProfile {
         isLoggedIn: Boolean(parsed.isLoggedIn),
         nickName: parsed.nickName || DEFAULT_GUEST_PROFILE.nickName,
         avatarUrl: parsed.avatarUrl || '',
-        loginTime: parsed.loginTime
+        loginTime: parsed.loginTime,
+        openid: parsed.openid,
+        patternCount: parsed.patternCount,
+        vipLevel: parsed.vipLevel
       }
     }
   } catch (err) {
@@ -103,3 +109,25 @@ export async function performWechatLogin(): Promise<{ code: string } | null> {
   }
   return null
 }
+
+export async function syncUserWithCloud(profile: UserProfile): Promise<UserProfile> {
+  try {
+    const { callCloudFunction } = await import('./cloud')
+    const cloudData = await callCloudFunction('user.syncProfile', {
+      nickname: profile.nickName,
+      avatar_url: profile.avatarUrl
+    })
+    if (cloudData) {
+      return saveUserProfile({
+        ...profile,
+        openid: cloudData.openid,
+        patternCount: cloudData.pattern_count,
+        vipLevel: cloudData.vip_level
+      })
+    }
+  } catch (err) {
+    console.warn('[UserSync] Failed to sync with cloud:', err)
+  }
+  return profile
+}
+

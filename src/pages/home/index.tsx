@@ -4,12 +4,64 @@ import Taro from '@tarojs/taro'
 import { getAllPalettes } from '@/palettes'
 import type { BeadBrand } from '@/palettes/types'
 import xiaoguaLogo from '@/assets/xiaogua.png'
-import { getUserProfile, clearUserProfile, UserProfile } from '@/utils/user'
+import { getUserProfile, clearUserProfile, syncUserWithCloud, UserProfile } from '@/utils/user'
 import { LoginModal } from '@/components/LoginModal'
+import { DraftsSheet } from '@/components/DraftsSheet'
+import { callCloudFunction } from '@/utils/cloud'
 import './index.scss'
 
 export type ThemeMode = 'dark' | 'light'
 export type HomeTab = 'make' | 'plaza' | 'mine'
+
+export interface PlazaPost {
+  _id: string
+  pattern_id?: string
+  author_openid?: string
+  author_nickname?: string
+  author_avatar?: string
+  title: string
+  tag: string
+  size_desc?: string
+  colors_count?: number
+  preview_url?: string
+  like_count: number
+  fork_count?: number
+  hasLiked?: boolean
+  created_at?: string | number | Date
+  icon?: string
+}
+
+/**
+ * Fetch plaza posts for a given category
+ */
+export async function fetchPlazaPosts(category?: string): Promise<PlazaPost[]> {
+  const params: { category?: string } = {}
+  if (category && category !== '全部') {
+    params.category = category
+  }
+  const res = await callCloudFunction<{ list: PlazaPost[] }>('plaza.list', params)
+  return (res && res.list) || []
+}
+
+/**
+ * Toggle like for a post in 灵感广场
+ */
+export async function handleToggleLike(postId: string): Promise<{ liked: boolean; post_id: string }> {
+  if (!postId) {
+    throw new Error('post_id is required')
+  }
+  return await callCloudFunction<{ liked: boolean; post_id: string }>('plaza.toggleLike', { post_id: postId })
+}
+
+/**
+ * Fork a pattern from plaza post into user drafts
+ */
+export async function handleForkPattern(postId: string): Promise<{ new_pattern_id: string; pattern?: any }> {
+  if (!postId) {
+    throw new Error('post_id is required')
+  }
+  return await callCloudFunction<{ new_pattern_id: string; pattern?: any }>('plaza.fork', { post_id: postId })
+}
 
 const PRESET_SIZES = [
   { w: 16, h: 16, name: '16 × 16', desc: '简约卡通' },
@@ -18,8 +70,8 @@ const PRESET_SIZES = [
   { w: 52, h: 52, name: '52 × 52', desc: '全景进阶' }
 ]
 
-// 广场精选样例社区数据
-const PLAZA_ITEMS = [
+// 广场精选样例社区数据（离线/预置备选）
+export const PLAZA_ITEMS = [
   {
     id: 'mario',
     title: '经典马里奥',
@@ -98,14 +150,64 @@ export default function HomePage() {
   const [currentTab, setCurrentTab] = useState<HomeTab>('make')
   const [userProfile, setUserProfile] = useState<UserProfile>(getUserProfile)
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false)
+  const [showDraftsSheet, setShowDraftsSheet] = useState<boolean>(false)
   const [selectedPresetIndex, setSelectedPresetIndex] = useState<number>(0)
   const [isCustomSize, setIsCustomSize] = useState<boolean>(false)
   const [customWidth, setCustomWidth] = useState<number>(29)
   const [customHeight, setCustomHeight] = useState<number>(29)
   const [selectedBrand, setSelectedBrand] = useState<BeadBrand>('artkal')
   const [plazaCategory, setPlazaCategory] = useState<string>('全部')
+  const [plazaPosts, setPlazaPosts] = useState<PlazaPost[]>([])
+  const [plazaLoading, setPlazaLoading] = useState<boolean>(false)
 
   const palettes = getAllPalettes()
+
+  // 同步用户云端信息（历史图纸数等）
+  const refreshUserProfile = useCallback(async () => {
+    const current = getUserProfile()
+    setUserProfile(current)
+    try {
+      const synced = await syncUserWithCloud(current)
+      if (synced) {
+        setUserProfile(synced)
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshUserProfile()
+  }, [refreshUserProfile])
+
+  useEffect(() => {
+    if (currentTab === 'mine') {
+      refreshUserProfile()
+    }
+  }, [currentTab, refreshUserProfile])
+
+  // 动态获取灵感广场作品
+  const loadPlazaData = useCallback(async (cat: string) => {
+    setPlazaLoading(true)
+    try {
+      const list = await fetchPlazaPosts(cat)
+      setPlazaPosts(list)
+    } catch (err: any) {
+      console.warn('Failed to load plaza posts:', err)
+      Taro.showToast({
+        title: err?.message || '获取广场作品失败',
+        icon: 'none'
+      })
+    } finally {
+      setPlazaLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (currentTab === 'plaza') {
+      loadPlazaData(plazaCategory)
+    }
+  }, [currentTab, plazaCategory, loadPlazaData])
 
   // 动态同步小程序原生导航栏色彩
   useEffect(() => {
@@ -147,13 +249,96 @@ export default function HomePage() {
     return { width: preset.w, height: preset.h }
   }
 
-  const navigateToEditor = (imagePath?: string) => {
+  const navigateToEditor = (imagePath?: string, patternId?: string) => {
+    if (patternId) {
+      Taro.navigateTo({ url: `/pages/index/index?patternId=${patternId}` })
+      return
+    }
     const { width, height } = getCurrentDimensions()
     let url = `/pages/index/index?width=${width}&height=${height}&brand=${selectedBrand}`
     if (imagePath) {
       url += `&imagePath=${encodeURIComponent(imagePath)}`
     }
     Taro.navigateTo({ url })
+  }
+
+  // 点赞 / 取消点赞（乐观更新，失败回滚）
+  const onToggleLike = async (e: any, post: PlazaPost) => {
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation()
+    }
+    const targetId = post._id
+    const prevLiked = !!post.hasLiked
+    const prevCount = post.like_count || 0
+    const nextLiked = !prevLiked
+    const nextCount = Math.max(0, prevCount + (nextLiked ? 1 : -1))
+
+    // 乐观更新
+    setPlazaPosts(prev =>
+      prev.map(p =>
+        p._id === targetId ? { ...p, hasLiked: nextLiked, like_count: nextCount } : p
+      )
+    )
+
+    try {
+      const res = await handleToggleLike(targetId)
+      if (res && typeof res.liked === 'boolean' && res.liked !== nextLiked) {
+        setPlazaPosts(prev =>
+          prev.map(p =>
+            p._id === targetId
+              ? {
+                  ...p,
+                  hasLiked: res.liked,
+                  like_count: Math.max(0, prevCount + (res.liked ? 1 : -1))
+                }
+              : p
+          )
+        )
+      }
+    } catch (err: any) {
+      // 失败回滚
+      setPlazaPosts(prev =>
+        prev.map(p =>
+          p._id === targetId ? { ...p, hasLiked: prevLiked, like_count: prevCount } : p
+        )
+      )
+      Taro.showToast({
+        title: err?.message || '点赞失败，请重试',
+        icon: 'none'
+      })
+    }
+  }
+
+  // 导入制作（复刻二次创作）
+  const onForkPattern = async (e: any, post: PlazaPost) => {
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation()
+    }
+    try {
+      Taro.showLoading({ title: '正在导入图纸...', mask: true })
+      const res = await handleForkPattern(post._id)
+      Taro.hideLoading()
+      if (res && res.new_pattern_id) {
+        setUserProfile(prev => ({
+          ...prev,
+          patternCount: (prev.patternCount || 0) + 1
+        }))
+        Taro.navigateTo({
+          url: `/pages/index/index?patternId=${res.new_pattern_id}`
+        })
+      } else {
+        Taro.showToast({
+          title: '导入图纸失败，请重试',
+          icon: 'none'
+        })
+      }
+    } catch (err: any) {
+      Taro.hideLoading()
+      Taro.showToast({
+        title: err?.message || '导入图纸失败，请重试',
+        icon: 'none'
+      })
+    }
   }
 
   const handlePickImage = () => {
@@ -214,9 +399,6 @@ export default function HomePage() {
     })
   }
 
-  const filteredPlazaItems = plazaCategory === '全部'
-    ? PLAZA_ITEMS
-    : PLAZA_ITEMS.filter(it => it.tag.includes(plazaCategory))
 
   return (
     <View className={`home-container theme-${theme}`}>
@@ -426,34 +608,76 @@ export default function HomePage() {
             ))}
           </View>
 
-          {/* 广场图样瀑布流卡片 */}
-          <View className="plaza-grid">
-            {filteredPlazaItems.map(item => (
-              <View
-                key={item.id}
-                className="plaza-card"
-                onClick={() => navigateToEditor()}
-              >
-                <View className="card-preview">
-                  <Text className="preview-emoji">{item.icon}</Text>
-                  <View className="card-tag-pill">
-                    <Text>{item.tag}</Text>
+          {/* 加载骨架屏 */}
+          {plazaLoading ? (
+            <View className="plaza-skeleton-grid">
+              {[1, 2, 3, 4].map(idx => (
+                <View key={idx} className="plaza-skeleton-card">
+                  <View className="skeleton-preview" />
+                  <View className="skeleton-info">
+                    <View className="skeleton-line title" />
+                    <View className="skeleton-line meta" />
+                    <View className="skeleton-line btn" />
                   </View>
                 </View>
+              ))}
+            </View>
+          ) : plazaPosts.length === 0 ? (
+            /* 空状态 */
+            <View className="plaza-empty">
+              <Text className="empty-icon">🎨</Text>
+              <Text className="empty-title">暂无图纸作品</Text>
+              <Text className="empty-subtitle">快去制作并发布你的第一份图纸到广场吧！</Text>
+            </View>
+          ) : (
+            /* 广场图样瀑布流卡片 */
+            <View className="plaza-grid">
+              {plazaPosts.map(item => (
+                <View
+                  key={item._id}
+                  className="plaza-card"
+                  onClick={(e) => onForkPattern(e, item)}
+                >
+                  <View className="card-preview">
+                    {item.preview_url ? (
+                      <Image
+                        src={item.preview_url}
+                        className="preview-image"
+                        mode="aspectFit"
+                      />
+                    ) : (
+                      <Text className="preview-emoji">{item.icon || '🎨'}</Text>
+                    )}
+                    <View className="card-tag-pill">
+                      <Text>{item.tag || '拼豆'}</Text>
+                    </View>
+                  </View>
 
-                <View className="card-info">
-                  <Text className="item-title">{item.title}</Text>
-                  <View className="item-meta">
-                    <Text className="item-size">{item.size} · {item.colors}色</Text>
-                    <Text className="item-likes">❤️ {item.likes}</Text>
+                  <View className="card-info">
+                    <Text className="item-title">{item.title}</Text>
+                    <View className="item-meta">
+                      <Text className="item-size">
+                        {item.size_desc || '标准'} · {item.colors_count ?? 0}色
+                      </Text>
+                      <View
+                        className={`item-likes ${item.hasLiked ? 'active' : ''}`}
+                        onClick={(e) => onToggleLike(e, item)}
+                      >
+                        <Text className="like-icon">{item.hasLiked ? '❤️' : '🤍'}</Text>
+                        <Text className="like-count">{item.like_count ?? 0}</Text>
+                      </View>
+                    </View>
+                    <Button
+                      className="btn-craft-now"
+                      onClick={(e) => onForkPattern(e, item)}
+                    >
+                      <Text>导入制作</Text>
+                    </Button>
                   </View>
-                  <Button className="btn-craft-now">
-                    <Text>导入制作</Text>
-                  </Button>
                 </View>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
           <View className="plaza-bottom-placeholder" />
         </View>
       )}
@@ -500,8 +724,8 @@ export default function HomePage() {
 
           {/* 数据总览 */}
           <View className="stats-dashboard">
-            <View className="stat-box">
-              <Text className="stat-num">0</Text>
+            <View className="stat-box" onClick={() => setShowDraftsSheet(true)}>
+              <Text className="stat-num">{userProfile.patternCount ?? 0}</Text>
               <Text className="stat-label">历史图纸</Text>
             </View>
             <View className="stat-divider" />
@@ -518,7 +742,7 @@ export default function HomePage() {
 
           {/* 常用功能列表 */}
           <View className="menu-group">
-            <View className="menu-item" onClick={() => handleComingSoon('我的拼豆草稿箱')}>
+            <View className="menu-item" onClick={() => setShowDraftsSheet(true)}>
               <Text className="menu-icon">📁</Text>
               <Text className="menu-label">我的制作草稿箱</Text>
               <Text className="menu-arrow">&gt;</Text>
@@ -651,6 +875,27 @@ export default function HomePage() {
         onClose={() => setShowLoginModal(false)}
         onSuccess={(profile) => {
           setUserProfile(profile)
+        }}
+      />
+
+      {/* 我的制作草稿箱抽屉 */}
+      <DraftsSheet
+        isOpen={showDraftsSheet}
+        theme={theme}
+        onClose={() => setShowDraftsSheet(false)}
+        onSelectDraft={(patternId) => {
+          setShowDraftsSheet(false)
+          navigateToEditor(undefined, patternId)
+        }}
+        onPublishSuccess={() => {
+          refreshUserProfile()
+        }}
+        onDeleteSuccess={() => {
+          setUserProfile(prev => ({
+            ...prev,
+            patternCount: Math.max(0, (prev.patternCount || 1) - 1)
+          }))
+          refreshUserProfile()
         }}
       />
     </View>

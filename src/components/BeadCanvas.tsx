@@ -212,11 +212,11 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     // 3. 循环绘制每个方块
     for (let y = minY; y < maxY; y++) {
       for (let x = minX; x < maxX; x++) {
-        const cell = grid[y][x]
+        const cell = grid[y]?.[x]
         const cellLeft = offsetX + x * scaledCell
         const cellTop = offsetY + y * scaledCell
 
-        if (cell.isEmpty) {
+        if (!cell || cell.isEmpty) {
           ctx.fillStyle = emptyCellBg
           ctx.fillRect(cellLeft, cellTop, scaledCell, scaledCell)
           ctx.strokeStyle = emptyCellBorder
@@ -428,8 +428,13 @@ export const BeadCanvas = forwardRef<BeadCanvasRef, BeadCanvasProps>((props, ref
     )
 
     if (pos && onCellClick) {
-      const cell = grid[pos.gridY][pos.gridX]
-      onCellClick({ x: pos.gridX, y: pos.gridY, cell })
+      const cell = grid[pos.gridY]?.[pos.gridX] || {
+        x: pos.gridX,
+        y: pos.gridY,
+        isEmpty: true,
+        color: { code: 'EMPTY', hex: '#FFFFFF', name: '空', rgb: [255, 255, 255] }
+      }
+      onCellClick({ x: pos.gridX, y: pos.gridY, cell: cell as BeadCell })
     }
   }, [grid, baseCellSize, onCellClick])
 

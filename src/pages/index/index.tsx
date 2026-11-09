@@ -26,6 +26,13 @@ import {
 } from '@/utils/exporter'
 import { SAMPLES, sampleToImageData, type SamplePattern } from '@/assets/samples'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { callCloudFunction } from '@/utils/cloud'
+import {
+  serializeGridForDraft,
+  deserializeGridFromDraft,
+  normalizeGridCells,
+  EMPTY_BEAD_COLOR
+} from '@/utils/draft-helpers'
 import './index.scss'
 
 export type ThemeMode = 'dark' | 'light'
@@ -61,6 +68,9 @@ function IndexPageInner() {
   const [showFullColorPicker, setShowFullColorPicker] = useState(false)
   const [colorPickerTargetPos, setColorPickerTargetPos] = useState<{ x: number; y: number } | null>(null)
   const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null)
+  const [currentPatternId, setCurrentPatternId] = useState<string | null>(null)
+  const [currentPatternTitle, setCurrentPatternTitle] = useState<string>('未命名拼豆图纸')
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
 
   const [grid, setGrid] = useState<BeadCell[][]>([])
   const [colorStats, setColorStats] = useState<Map<string, BeadColorStatItem>>(new Map())
@@ -504,8 +514,13 @@ function IndexPageInner() {
 
     if (currentTool === 'eraser') {
       setGrid(prev => {
-        const next = prev.map(row => row.map(c => ({ ...c })))
-        next[y][x].isEmpty = true
+        const next = prev.map(row =>
+          row.map(c => (c ? { ...c, color: c.color ? { ...c.color } : undefined } : null as any))
+        )
+        if (next[y] && next[y][x]) {
+          next[y][x].isEmpty = true
+          next[y][x].color = EMPTY_BEAD_COLOR
+        }
         setColorStats(getBeadColorStats(next))
         historyRef.current.pushState(next)
         updateHistoryState()
@@ -517,7 +532,9 @@ function IndexPageInner() {
     if (currentTool === 'bucket') {
       if (!activeColor) return
       setGrid(prev => {
-        const next = prev.map(row => row.map(c => ({ ...c })))
+        const next = prev.map(row =>
+          row.map(c => (c ? { ...c, color: c.color ? { ...c.color } : undefined } : null as any))
+        )
         const affected = floodFill(next, x, y, activeColor)
         if (affected > 0) {
           setColorStats(getBeadColorStats(next))
@@ -532,9 +549,22 @@ function IndexPageInner() {
 
   const handleSelectFullColor = useCallback((selectedColor: BeadColor, pos: { x: number; y: number }) => {
     setGrid(prev => {
-      const next = prev.map(row => row.map(c => ({ ...c })))
-      next[pos.y][pos.x].color = { ...selectedColor }
-      next[pos.y][pos.x].isEmpty = false
+      const next = prev.map(row =>
+        row.map(c => (c ? { ...c, color: c.color ? { ...c.color } : undefined } : null as any))
+      )
+      if (next[pos.y] && next[pos.y][pos.x]) {
+        next[pos.y][pos.x].color = { ...selectedColor }
+        next[pos.y][pos.x].isEmpty = false
+      } else {
+        if (!next[pos.y]) next[pos.y] = []
+        next[pos.y][pos.x] = {
+          x: pos.x,
+          y: pos.y,
+          coord: { x: pos.x, y: pos.y },
+          color: { ...selectedColor },
+          isEmpty: false
+        } as BeadCell
+      }
       setColorStats(getBeadColorStats(next))
       historyRef.current.pushState(next)
       updateHistoryState()
@@ -694,13 +724,118 @@ function IndexPageInner() {
     }
   }, [grid, colorStats, currentPalette])
 
+  const restoreDraftFromId = useCallback(async (patternId: string) => {
+    if (!patternId) return
+    hasLoadedInitialSampleRef.current = true
+    Taro.showLoading({ title: '加载草稿中...' })
+    try {
+      const pattern = await callCloudFunction<any>('pattern.getDetail', { id: patternId })
+      if (!pattern) {
+        throw new Error('未找到图纸数据')
+      }
+      setCurrentPatternId(pattern._id || pattern.id || patternId)
+      if (pattern.title) {
+        setCurrentPatternTitle(pattern.title)
+      }
+      const w = Number(pattern.width) || 29
+      const h = Number(pattern.height) || 29
+      const brand = (pattern.brand as BeadBrand) || 'artkal'
+
+      setBoardWidth(w)
+      setBoardHeight(h)
+      setCurrentBrand(brand)
+
+      const rawRestored = deserializeGridFromDraft(pattern.grid_data, brand, { normalizeEmpty: true })
+      const restoredGrid = normalizeGridCells(rawRestored)
+      setGrid(restoredGrid)
+      const stats = getBeadColorStats(restoredGrid)
+      setColorStats(stats)
+
+      historyRef.current.clear()
+      historyRef.current.pushState(restoredGrid)
+      updateHistoryState()
+
+      const sortedStats = Array.from(stats.values()).sort((a, b) => b.count - a.count)
+      if (sortedStats.length > 0) {
+        setActiveColor(sortedStats[0].color)
+      }
+
+      if (pattern.preview_url) {
+        setOriginalImageUrl(pattern.preview_url)
+      }
+
+      canvasRef.current?.resetView()
+      Taro.hideLoading()
+    } catch (err: any) {
+      console.error('[restoreDraftFromId error]', err)
+      Taro.hideLoading()
+      Taro.showToast({ title: '加载草稿失败', icon: 'none' })
+    }
+  }, [updateHistoryState])
+
+  const saveCurrentDraft = useCallback(async () => {
+    if (isSavingDraft) return
+    if (!grid || grid.length === 0) {
+      Taro.showToast({ title: '当前画板为空', icon: 'none' })
+      return
+    }
+
+    try {
+      setIsSavingDraft(true)
+      Taro.showLoading({ title: '正在保存草稿...', mask: true })
+      const colorSummary: Record<string, number> = {}
+      colorStats.forEach((v, k) => {
+        if (k !== '__EMPTY__') {
+          colorSummary[k] = v.count
+        }
+      })
+
+      const payload: any = {
+        title: currentPatternTitle || '未命名拼豆图纸',
+        width: boardWidth,
+        height: boardHeight,
+        brand: currentBrand,
+        grid_data: serializeGridForDraft(grid),
+        color_summary: colorSummary,
+        preview_url: originalImageUrl || ''
+      }
+      if (currentPatternId) {
+        payload.id = currentPatternId
+      }
+
+      const res = await callCloudFunction<{ id: string }>('pattern.saveDraft', payload)
+      if (res && res.id) {
+        setCurrentPatternId(res.id)
+      }
+      Taro.hideLoading()
+      Taro.showToast({ title: '已保存至云端草稿箱', icon: 'success' })
+    } catch (err: any) {
+      console.error('[saveCurrentDraft error]', err)
+      Taro.hideLoading()
+      Taro.showToast({
+        title: err?.message || '保存草稿失败',
+        icon: 'none'
+      })
+    } finally {
+      setIsSavingDraft(false)
+    }
+  }, [isSavingDraft, grid, currentPatternTitle, boardWidth, boardHeight, currentBrand, colorStats, originalImageUrl, currentPatternId])
+
+  const handleSaveDraft = saveCurrentDraft
+
   const initFromParams = useCallback((params: Record<string, any>) => {
     if (hasLoadedInitialSampleRef.current) return
     if (!params) return
-    const { width, height, brand, imagePath } = params
-    if (!width && !height && !brand && !imagePath) return
+    const { width, height, brand, imagePath, patternId } = params
+    if (!width && !height && !brand && !imagePath && !patternId) return
 
     hasLoadedInitialSampleRef.current = true
+
+    if (patternId) {
+      restoreDraftFromId(String(patternId))
+      return
+    }
+
     const targetW = Number(width) || boardWidth
     const targetH = Number(height) || boardHeight
     const targetBrand = (brand as BeadBrand) || currentBrand
@@ -725,7 +860,7 @@ function IndexPageInner() {
     } else {
       loadSample(SAMPLES[0])
     }
-  }, [boardWidth, boardHeight, currentBrand, decodeImageToPixels, loadSample])
+  }, [boardWidth, boardHeight, currentBrand, decodeImageToPixels, loadSample, restoreDraftFromId])
 
   // 微信小程序原生生命周期 onLoad：优先从此处提取参数
   useLoad((options: any) => {
@@ -734,7 +869,7 @@ function IndexPageInner() {
 
   // 兼容 Taro 路由上下文 router.params 监听
   useEffect(() => {
-    if (router.params && (router.params.imagePath || router.params.width)) {
+    if (router.params && (router.params.imagePath || router.params.width || router.params.patternId)) {
       initFromParams(router.params)
     }
   }, [router.params, initFromParams])
@@ -847,11 +982,20 @@ function IndexPageInner() {
         colorCount={colorStats.size}
       />
 
-      {/* 图纸信息面板下方：醒目大号下载图纸按钮 */}
+      {/* 图纸信息面板下方：双操作按钮（保存草稿 + 下载图纸） */}
       <View className="export-action-card">
-        <View className="download-sheet-btn" onClick={handleExportSheet}>
-          <Text className="btn-icon">📥</Text>
-          <Text className="btn-text">下载高清施工图纸</Text>
+        <View className="action-buttons-group">
+          <View
+            className={`action-btn save-draft-btn ${isSavingDraft ? 'is-loading' : ''}`}
+            onClick={isSavingDraft ? undefined : handleSaveDraft}
+          >
+            <Text className="btn-icon">{isSavingDraft ? '⏳' : '☁️'}</Text>
+            <Text className="btn-text">{isSavingDraft ? '正在保存...' : '保存云端草稿'}</Text>
+          </View>
+          <View className="action-btn download-sheet-btn" onClick={handleExportSheet}>
+            <Text className="btn-icon">📥</Text>
+            <Text className="btn-text">下载高清施工图纸</Text>
+          </View>
         </View>
         <Text className="btn-hint">全幅对齐标准施工图纸 · 含坐标与色号清单 · 自动保存相册</Text>
       </View>

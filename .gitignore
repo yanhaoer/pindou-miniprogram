@@ -20,3 +20,6 @@ dist-h5
 # WeChat DevTools private config
 project.private.config.json
 
+# NPM cache
+.npm
+

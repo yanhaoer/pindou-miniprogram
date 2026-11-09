@@ -8,7 +8,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      '@tarojs/taro': path.resolve(__dirname, './tests/mocks/taro.ts'),
+      '@tarojs/components': path.resolve(__dirname, './tests/mocks/components.ts')
     }
   }
 })

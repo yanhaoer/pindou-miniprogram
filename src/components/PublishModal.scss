@@ -1,0 +1,425 @@
+/* PublishModal Styles */
+.publish-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32rpx;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+  animation: pmFadeIn 0.2s ease-out;
+
+  .publish-modal-content {
+    width: 100%;
+    max-width: 640rpx;
+    background: #181920;
+    border: 2rpx solid rgba(255, 255, 255, 0.1);
+    border-radius: 32rpx;
+    padding: 36rpx 32rpx 40rpx;
+    box-shadow: 0 24rpx 60rpx rgba(0, 0, 0, 0.65);
+    display: flex;
+    flex-direction: column;
+    gap: 30rpx;
+    box-sizing: border-box;
+    animation: pmScaleIn 0.22s ease-out;
+  }
+
+  /* 头部标题 */
+  .modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+
+    .title-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6rpx;
+
+      .modal-title {
+        font-size: 34rpx;
+        font-weight: 800;
+        color: #ffffff;
+        letter-spacing: 0.5rpx;
+      }
+
+      .modal-subtitle {
+        font-size: 22rpx;
+        color: #94a3b8;
+      }
+    }
+
+    .close-btn {
+      width: 52rpx;
+      height: 52rpx;
+      border-radius: 26rpx;
+      background: rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.2s;
+
+      &:active {
+        background: rgba(255, 255, 255, 0.18);
+      }
+
+      .close-icon {
+        font-size: 26rpx;
+        color: #cbd5e1;
+        line-height: 1;
+      }
+    }
+  }
+
+  /* 图纸简要预览卡片 */
+  .draft-preview-card {
+    display: flex;
+    align-items: center;
+    gap: 20rpx;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1rpx solid rgba(255, 255, 255, 0.08);
+    border-radius: 20rpx;
+    padding: 20rpx;
+
+    .draft-thumbnail-wrap {
+      width: 100rpx;
+      height: 100rpx;
+      border-radius: 14rpx;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+
+      .draft-thumbnail {
+        width: 100%;
+        height: 100%;
+      }
+
+      .draft-thumbnail-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        .placeholder-icon {
+          font-size: 40rpx;
+        }
+      }
+    }
+
+    .draft-info {
+      display: flex;
+      flex-direction: column;
+      gap: 12rpx;
+      flex: 1;
+      overflow: hidden;
+
+      .draft-orig-title {
+        font-size: 28rpx;
+        font-weight: 700;
+        color: #f1f5f9;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .draft-meta-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10rpx;
+
+        .meta-pill {
+          font-size: 20rpx;
+          padding: 4rpx 14rpx;
+          border-radius: 10rpx;
+          line-height: 1.4;
+          font-weight: 600;
+
+          &.size-pill {
+            background: rgba(59, 130, 246, 0.18);
+            color: #60a5fa;
+            border: 1rpx solid rgba(59, 130, 246, 0.3);
+          }
+
+          &.brand-pill {
+            background: rgba(168, 85, 247, 0.18);
+            color: #c084fc;
+            border: 1rpx solid rgba(168, 85, 247, 0.3);
+          }
+
+          &.color-pill {
+            background: rgba(234, 179, 8, 0.18);
+            color: #facc15;
+            border: 1rpx solid rgba(234, 179, 8, 0.3);
+          }
+        }
+      }
+    }
+  }
+
+  /* 表单分组 */
+  .form-section {
+    display: flex;
+    flex-direction: column;
+    gap: 14rpx;
+
+    .section-label {
+      font-size: 26rpx;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+
+    .input-wrap {
+      display: flex;
+      align-items: center;
+      background: #0f1015;
+      border: 2rpx solid rgba(255, 255, 255, 0.12);
+      border-radius: 18rpx;
+      padding: 0 24rpx;
+      height: 84rpx;
+      transition: border-color 0.2s, background 0.2s;
+
+      &:focus-within {
+        border-color: #ff4d4f;
+        background: #14151b;
+      }
+
+      .title-input {
+        flex: 1;
+        font-size: 28rpx;
+        color: #ffffff;
+        background: transparent;
+        height: 100%;
+      }
+
+      .input-placeholder {
+        color: #64748b;
+      }
+
+      .char-count {
+        font-size: 22rpx;
+        color: #64748b;
+        margin-left: 12rpx;
+      }
+    }
+
+    /* 标签药丸行 */
+    .tag-pills-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14rpx;
+
+      .tag-pill {
+        padding: 12rpx 24rpx;
+        border-radius: 30rpx;
+        background: rgba(255, 255, 255, 0.06);
+        border: 2rpx solid rgba(255, 255, 255, 0.1);
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        .tag-text {
+          font-size: 24rpx;
+          color: #94a3b8;
+          font-weight: 600;
+        }
+
+        &:active {
+          transform: scale(0.96);
+        }
+
+        &.active {
+          background: linear-gradient(135deg, rgba(255, 77, 79, 0.22), rgba(249, 115, 22, 0.22));
+          border-color: #ff4d4f;
+
+          .tag-text {
+            color: #ff7875;
+            font-weight: 700;
+          }
+        }
+      }
+    }
+  }
+
+  /* 操作按钮区 */
+  .modal-actions {
+    display: flex;
+    gap: 20rpx;
+    margin-top: 8rpx;
+
+    .btn-cancel {
+      flex: 1;
+      height: 84rpx;
+      line-height: 84rpx;
+      border-radius: 42rpx;
+      background: rgba(255, 255, 255, 0.08);
+      color: #94a3b8;
+      font-size: 28rpx;
+      font-weight: 600;
+      border: none;
+      padding: 0;
+
+      &::after {
+        border: none;
+      }
+
+      &:active {
+        background: rgba(255, 255, 255, 0.14);
+      }
+    }
+
+    .btn-submit {
+      flex: 1.8;
+      height: 84rpx;
+      line-height: 84rpx;
+      border-radius: 42rpx;
+      background: linear-gradient(135deg, #ff4d4f, #f97316);
+      color: #ffffff;
+      font-size: 28rpx;
+      font-weight: 700;
+      border: none;
+      box-shadow: 0 8rpx 24rpx rgba(255, 77, 79, 0.35);
+      padding: 0;
+
+      &::after {
+        border: none;
+      }
+
+      &:active {
+        opacity: 0.9;
+        transform: translateY(2rpx);
+      }
+
+      &[disabled] {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+    }
+  }
+
+  /* Light 模式适配 */
+  &.theme-light {
+    background: rgba(15, 23, 42, 0.45);
+
+    .publish-modal-content {
+      background: #ffffff;
+      border: 1rpx solid #e2e8f0;
+      box-shadow: 0 24rpx 60rpx rgba(15, 23, 42, 0.15);
+    }
+
+    .modal-header {
+      .title-group {
+        .modal-title {
+          color: #0f172a;
+        }
+        .modal-subtitle {
+          color: #64748b;
+        }
+      }
+
+      .close-btn {
+        background: #f1f5f9;
+
+        &:active {
+          background: #e2e8f0;
+        }
+
+        .close-icon {
+          color: #64748b;
+        }
+      }
+    }
+
+    .draft-preview-card {
+      background: #f8fafc;
+      border-color: #e2e8f0;
+
+      .draft-thumbnail-wrap {
+        background: #e2e8f0;
+      }
+
+      .draft-info {
+        .draft-orig-title {
+          color: #0f172a;
+        }
+      }
+    }
+
+    .form-section {
+      .section-label {
+        color: #334155;
+      }
+
+      .input-wrap {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+
+        &:focus-within {
+          border-color: #ff4d4f;
+          background: #ffffff;
+        }
+
+        .title-input {
+          color: #0f172a;
+        }
+
+        .input-placeholder {
+          color: #94a3b8;
+        }
+
+        .char-count {
+          color: #94a3b8;
+        }
+      }
+
+      .tag-pills-row {
+        .tag-pill {
+          background: #f1f5f9;
+          border-color: #e2e8f0;
+
+          .tag-text {
+            color: #64748b;
+          }
+
+          &.active {
+            background: #fff1f0;
+            border-color: #ff4d4f;
+
+            .tag-text {
+              color: #ff4d4f;
+            }
+          }
+        }
+      }
+    }
+
+    .modal-actions {
+      .btn-cancel {
+        background: #f1f5f9;
+        color: #475569;
+
+        &:active {
+          background: #e2e8f0;
+        }
+      }
+    }
+  }
+}
+
+@keyframes pmFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pmScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

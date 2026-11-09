@@ -137,7 +137,7 @@ export async function renderCraftSheet(
       const cx = boardLeft + x * cellSize
       const cy = boardTop + y * cellSize
 
-      if (cell.isEmpty) {
+      if (!cell || cell.isEmpty) {
         ctx.fillStyle = '#F9FAFB'
         ctx.fillRect(cx, cy, cellSize, cellSize)
       } else {

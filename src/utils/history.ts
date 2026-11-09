@@ -2,7 +2,7 @@ import type { BeadCell } from './quantizer'
 import type { BeadColor } from '@/palettes/types'
 
 export function cloneGrid(grid: BeadCell[][]): BeadCell[][] {
-  return grid.map(row => row.map(cell => ({ ...cell, color: { ...cell.color } })))
+  return grid.map(row => row.map(cell => (cell ? { ...cell, color: { ...cell.color } } : null as any)))
 }
 
 export class HistoryManager {
@@ -83,11 +83,20 @@ export function floodFill(
   while (queue.length > 0) {
     const [cx, cy] = queue.shift()!
     const cell = grid[cy][cx]
-    const currentCode = cell.isEmpty ? '__EMPTY__' : cell.color.code
+    const currentCode = (!cell || cell.isEmpty) ? '__EMPTY__' : cell.color.code
 
     if (currentCode === targetCode) {
-      cell.color = { ...newColor }
-      cell.isEmpty = false
+      if (!cell) {
+        grid[cy][cx] = {
+          x: cx,
+          y: cy,
+          color: { ...newColor },
+          isEmpty: false
+        }
+      } else {
+        cell.color = { ...newColor }
+        cell.isEmpty = false
+      }
       affectedCount++
 
       // 4-way neighbors

@@ -169,13 +169,13 @@ export interface BeadColorStatItem {
 /**
  * Calculate total usage statistics for each bead color
  */
-export function getBeadColorStats(grid: BeadCell[][]): Map<string, BeadColorStatItem> {
+export function getBeadColorStats(grid: (BeadCell | null)[][]): Map<string, BeadColorStatItem> {
   const stats = new Map<string, BeadColorStatItem>()
 
   for (let y = 0; y < grid.length; y++) {
     for (let x = 0; x < grid[y].length; x++) {
       const cell = grid[y][x]
-      if (cell.isEmpty) continue
+      if (!cell || cell.isEmpty || !cell.color || cell.color.code === '__EMPTY__') continue
 
       const code = cell.color.code
       const existing = stats.get(code)
@@ -196,14 +196,14 @@ export function getBeadColorStats(grid: BeadCell[][]): Map<string, BeadColorStat
 /**
  * Mirror bead grid horizontally (flip columns along Y-axis)
  */
-export function mirrorGridHorizontal(grid: BeadCell[][]): BeadCell[][] {
+export function mirrorGridHorizontal(grid: (BeadCell | null)[][]): (BeadCell | null)[][] {
   if (!grid || grid.length === 0) return []
   return grid.map(row => {
     const reversed = [...row].reverse()
-    return reversed.map((cell, newX) => ({
+    return reversed.map((cell, newX) => (cell ? {
       ...cell,
       x: newX
-    }))
+    } : null))
   })
 }
 

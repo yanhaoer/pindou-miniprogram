@@ -5,7 +5,8 @@ import {
   UserProfile,
   saveUserProfile,
   performWechatLogin,
-  DEFAULT_GUEST_PROFILE
+  DEFAULT_GUEST_PROFILE,
+  syncUserWithCloud
 } from '@/utils/user'
 import defaultAvatar from '@/assets/xiaogua.png'
 import './LoginModal.scss'
@@ -76,6 +77,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         isLoggedIn: true,
         nickName: trimmedNick,
         avatarUrl: avatarUrl || ''
+      })
+
+      // 异步调用云端档案同步，不阻塞即时登录成功响应
+      syncUserWithCloud(saved).then((synced) => {
+        if (synced) {
+          onSuccess(synced)
+        }
+      }).catch((err) => {
+        console.warn('[LoginModal] Failed to sync profile with cloud:', err)
       })
 
       Taro.showToast({
